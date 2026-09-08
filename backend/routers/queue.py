@@ -43,18 +43,17 @@ async def issue_queue(queue_data: QueueCreate):
 @router.get("/active")
 async def get_active_queues():
     try:
-        # ใช้ sort("created_at", 1) เพื่อให้คิวที่มาก่อนอยู่บนสุด
         cursor = queue_collection.find({"status": "waiting"}).sort("created_at", 1)
         queues = await cursor.to_list(length=100)
         
-        # 📌 จุดที่ต้องแก้: แปลง ObjectId ให้เป็น String ให้หมด
         for q in queues:
-            q["id"] = str(q["_id"])  # แปลงเป็น String แล้วเก็บไว้ในฟิลด์ "id"
-            q.pop("_id", None)       # ลบ "_id" ที่เป็น Object เจ้าปัญหาทิ้งไป!
+            q["id"] = str(q["_id"])
+            q.pop("_id", None)
             
         return queues
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"ดึงข้อมูลคิวผิดพลาด: {str(e)}")
+        print(f"Active queue fetch error: {str(e)}") # Check Render logs for this print
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @router.post("/{queue_id}/call")
 async def call_queue(queue_id: str, call_data: QueueCall):
