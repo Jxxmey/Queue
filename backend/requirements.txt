@@ -1,0 +1,10 @@
+fastapi>=0.103.0
+uvicorn>=0.23.0
+motor>=3.3.0
+pydantic>=2.3.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+websockets>=11.0.3
+python-jose[cryptography]>=3.3.0  # สำหรับทำ JWT Login (ถ้าต้องการ)
+passlib[bcrypt]>=1.7.4            # สำหรับ Hash รหัสผ่าน
+python-multipart

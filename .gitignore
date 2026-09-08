@@ -1,0 +1,53 @@
+# =================
+# Frontend (React / Vite)
+# =================
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
+
+# ถ้ารวมโฟลเดอร์ node_modules ไว้ข้างนอกสุด
+node_modules/
+dist/
+.vite/
+
+# =================
+# Backend (Python / FastAPI)
+# =================
+backend/__pycache__/
+backend/**/*.pyc
+backend/**/*.pyo
+backend/*.py[cod]
+backend/.venv/
+backend/env/
+backend/venv/
+backend/ENV/
+backend/env.bak/
+backend/venv.bak/
+
+# ถ้ารวม Virtual Environment ไว้ข้างนอกสุด
+.venv/
+env/
+venv/
+
+# =================
+# Environment Variables & Secrets
+# =================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# =================
+# IDE & System Files
+# =================
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+.DS_Store
+Thumbs.db
