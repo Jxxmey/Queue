@@ -3,6 +3,8 @@ import os
 from fastapi import APIRouter, HTTPException
 from typing import List, Optional
 from pydantic import BaseModel
+from fastapi import APIRouter, Request
+from database import get_collection
 
 router = APIRouter(prefix="/api/officer", tags=["Officer"])
 officer_collection = get_collection("officers")
