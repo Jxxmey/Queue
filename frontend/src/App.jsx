@@ -8,6 +8,7 @@ import Display from "./pages/Display";
 import Error404 from "./pages/Error404";
 import AdminQueue from "./pages/AdminQueue";
 import TvDisplay from './pages/TvDisplay';
+import SelectBranch from "./pages/SelectBranch";
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
           <Route path="/display" element={<Display />} />
           <Route path="/admin" element={<AdminQueue />} />
           <Route path="/tv" element={<TvDisplay />} />
+          <Route path="/select-branch" element={<SelectBranch />} />
           <Route path="*" element={<Error404 />} />
         </Routes>
       </div>

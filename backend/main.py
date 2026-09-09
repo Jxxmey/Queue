@@ -21,4 +21,4 @@ app.include_router(tts.router)
 @app.get("/")
 def read_root():
     return {"message": "Queue System Backend is running!"}
-# คำสั่งรัน: python -m uvicorn main:app --reload
+# คำสั่งรัน: python3 -m uvicorn main:app --reload

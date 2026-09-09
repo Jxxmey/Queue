@@ -79,48 +79,66 @@ async def issue_queue(queue_data: QueueCreate):
 async def get_active_queues(branch_id: str = Query(None)):
     try:
         query = {"status": "waiting"}
-        if branch_id and branch_id != "undefined" and branch_id != "null":
+        if branch_id and branch_id not in ["undefined", "null", ""]:
             query["branch_id"] = str(branch_id).strip()
             
         cursor = queue_collection.find(query).sort("created_at", 1)
-        queues = await cursor.to_list(length=100)
-        for q in queues:
+        queues = []
+        # 🟢 ใช้ async for วนลูปอ่านข้อมูลอย่างปลอดภัย
+        async for q in cursor:
             q["id"] = str(q["_id"])
             q.pop("_id", None)
+            queues.append(q)
+            if len(queues) >= 100:  # จำกัดที่ 100 รายการ
+                break
+                
         return queues
     except Exception as e:
+        print(f"❌ Error in /active: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/recent")
 async def get_recent_called_queues(branch_id: str = Query(None)):
     try:
         query = {"status": {"$in": ["calling", "completed"]}}
-        if branch_id and branch_id != "undefined" and branch_id != "null":
+        if branch_id and branch_id not in ["undefined", "null", ""]:
             query["branch_id"] = str(branch_id).strip()
             
         cursor = queue_collection.find(query).sort("called_at", -1)
-        queues = await cursor.to_list(length=5)
-        for q in queues:
+        queues = []
+        # 🟢 ใช้ async for วนลูปอ่านข้อมูล
+        async for q in cursor:
             q["id"] = str(q["_id"]) 
-            q.pop("_id", None)       
+            q.pop("_id", None) 
+            queues.append(q)
+            if len(queues) >= 5:  # จำกัดที่ 5 รายการ
+                break
+                      
         return queues
     except Exception as e:
+        print(f"❌ Error in /recent: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/unprinted")
 async def get_unprinted_queues(branch_id: str = Query(None)):
     try:
         query = {"status": "waiting", "printed": {"$ne": True}}
-        if branch_id and branch_id != "undefined" and branch_id != "null":
+        if branch_id and branch_id not in ["undefined", "null", ""]:
             query["branch_id"] = str(branch_id).strip()
             
         cursor = queue_collection.find(query).sort("created_at", 1) 
-        queues = await cursor.to_list(length=10)
-        for q in queues:
+        queues = []
+        # 🟢 ใช้ async for วนลูปอ่านข้อมูล
+        async for q in cursor:
             q["id"] = str(q["_id"])
             q.pop("_id", None)
+            queues.append(q)
+            if len(queues) >= 10:  # จำกัดที่ 10 รายการ
+                break
+                
         return queues
     except Exception as e:
+        print(f"❌ Error in /unprinted: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.patch("/{queue_id}/printed")

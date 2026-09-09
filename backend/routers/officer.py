@@ -17,34 +17,49 @@ class OfficerResponse(BaseModel):
     surname: str
     department_name: str
     position: str
-    branch_id: str   # <-- เพิ่มบรรทัดนี้
+    branch_id: str
     branch_name: str
     counter: str
 
 def load_officers_from_csv():
     officers = []
-    try:
-        with open(CSV_FILE_PATH, mode='r', encoding='cp874') as file:
-            reader = csv.DictReader(file)
-            for row in reader:
-                # 🟢 ล้างคอมมาออกจาก ID เช่น "28,682" -> "28682"
-                raw_id = str(row.get("ID", "")).strip()
-                clean_id = raw_id.replace(",", "")
+    encodings = ['utf-8-sig', 'utf-8', 'cp874', 'tis-620']
+    file_loaded = False
+    
+    for enc in encodings:
+        try:
+            with open(CSV_FILE_PATH, mode='r', encoding=enc) as file:
+                reader = csv.DictReader(file)
+                for row in reader:
+                    # 🟢 ล้างคอมมาออกจาก ID เช่น "28,682" -> "28682"
+                    raw_id = str(row.get("ID", "")).strip()
+                    clean_id = raw_id.replace(",", "")
 
-                officers.append({
-                    "id": clean_id,
-                    "title": str(row.get("Title", "")).strip(),
-                    "name": str(row.get("Name", "")).strip(),
-                    "surname": str(row.get("Surname", "")).strip(),
-                    "department_name": str(row.get("Department Name", "")).strip(),
-                    "position": str(row.get("Position", "")).strip(),
-                    "branch_id": str(row.get("Branch (ID)", "")).strip(),
-                    "branch_name": str(row.get("Branch Name", "")).strip(),
-                    "counter": str(row.get("Counter", "")).strip()
-                })
-        print(f"✅ โหลดข้อมูลพนักงานสำเร็จจำนวน: {len(officers)} คน")
-    except Exception as e:
-        print(f"❌ Error reading CSV: {e}")
+                    if clean_id:  # ตรวจสอบว่าไม่ใช้แถวว่าง
+                        officers.append({
+                            "id": clean_id,
+                            "title": str(row.get("Title", "")).strip(),
+                            "name": str(row.get("Name", "")).strip(),
+                            "surname": str(row.get("Surname", "")).strip(),
+                            "department_name": str(row.get("Department Name", "")).strip(),
+                            "position": str(row.get("Position", "")).strip(),
+                            "branch_id": str(row.get("Branch (ID)", "")).strip(),
+                            "branch_name": str(row.get("Branch Name", "")).strip(),
+                            "counter": str(row.get("Counter", "")).strip()
+                        })
+            
+            print(f"✅ โหลดข้อมูลพนักงานสำเร็จจำนวน: {len(officers)} คน (ใช้ Encoding: {enc})")
+            file_loaded = True
+            break  # 🟢 ถ้าอ่านไฟล์สำเร็จ ให้หลุดออกจากลูปเช็ค Encoding เลย
+
+        except UnicodeDecodeError:
+            continue  # 🟢 ถ้าอ่านแล้วติดขัดภาษาแปลกๆ ให้ลอง Encoding ตัวถัดไป
+        except Exception as e:
+            print(f"❌ Error reading CSV with {enc}: {e}")
+            break
+
+    if not file_loaded:
+        print(f"❌ Error: ไม่สามารถอ่านไฟล์ {CSV_FILE_PATH} ได้ กรุณาตรวจสอบไฟล์")
     
     return officers
 
