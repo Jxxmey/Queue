@@ -17,8 +17,8 @@ class PrintJob(BaseModel):
     id: str
     queue_number: str
     service_type: str
-    booking_number: str = None
-    customer_phone: str = None
+    booking_number: str | None = None   # 🟢 อนุญาตให้เป็น None ได้
+    customer_phone: str | None = None # 🟢 อนุญาตให้เป็น None ได้
     queues_ahead: int = 0
     officer_name: str = "ระบบอัตโนมัติ"
 
@@ -256,7 +256,7 @@ class PrintAgentApp:
         self.entry_api.pack(anchor=tk.W, pady=(0, 10))
 
         tk.Label(frame_mid, text="URL สำหรับเช็คคิว (Frontend):").pack(anchor=tk.W, pady=(0, 2))
-        self.url_var = tk.StringVar(value="https://queue-jjq4.onrender.com")
+        self.url_var = tk.StringVar(value="https://queue-jjq9.onrender.com")
         self.entry_url = ttk.Entry(frame_mid, textvariable=self.url_var, width=55)
         self.entry_url.pack(anchor=tk.W, pady=(0, 15))
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { FaPrint, FaTicketAlt, FaPhone, FaStore, FaBoxOpen } from "react-icons/fa";
+import { FaPrint, FaTicketAlt, FaPhone, FaStore, FaBoxOpen, FaHistory, FaRedo } from "react-icons/fa";
 import Navbar from "../components/Navbar";
 
 export default function IssueQueue() {
@@ -13,25 +13,40 @@ export default function IssueQueue() {
   const [officer, setOfficer] = useState(null);
   const [loading, setLoading] = useState(false);
   const [lastQueue, setLastQueue] = useState(null);
+  const [recentIssued, setRecentIssued] = useState([]); // 🟢 เก็บประวัติคิวที่ออกไปแล้ว
   const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
   
   const navigate = useNavigate();
   const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-  // ตรวจสอบสถานะการเข้าสู่ระบบ
+  // ตรวจสอบสถานะการเข้าสู่ระบบและดึงประวัติคิว
   useEffect(() => {
     const savedOfficer = localStorage.getItem("officer");
     if (savedOfficer) {
       setOfficer(JSON.parse(savedOfficer));
+      fetchRecentIssued();
     } else {
       navigate("/login");
     }
   }, [navigate]);
 
+  // ฟังก์ชันดึงประวัติคิวที่ออกโดยพนักงานคนนี้ (หรือคิวล่าสุด)
+  const fetchRecentIssued = async () => {
+    try {
+      const res = await axios.get(`${apiUrl}/api/queue/active`);
+      // เอาคิวล่าสุดขึ้นมาแสดงสัก 5 คิว
+      setRecentIssued(res.data.slice(-5).reverse());
+    } catch (err) {
+      console.error("Error fetching recent queues:", err);
+    }
+  };
+
   // ฟังก์ชันจัดการเมื่อกด "พิมพ์บัตรคิว"
   const handleIssueQueue = async (e) => {
     e.preventDefault(); 
     setError("");
+    setSuccessMsg("");
 
     if (!phone) {
       setError("กรุณากรอกเบอร์โทรศัพท์ลูกค้า");
@@ -60,10 +75,14 @@ export default function IssueQueue() {
 
       const response = await axios.post(`${apiUrl}/api/queue/issue`, payload);
       setLastQueue(response.data);
+      setSuccessMsg(`ออกบัตรคิว ${response.data.queue_number} สำเร็จ! กำลังสั่งพิมพ์...`);
       
-      // ล้างข้อมูลหลังจากออกคิวสำเร็จ
+      // ล้างข้อมูลฟอร์มหลังจากออกคิวสำเร็จ
       setPhone(""); 
       setBookingDigits("");
+      
+      // รีเฟรชประวัติ
+      fetchRecentIssued();
       
     } catch (err) {
       console.error("Issue Queue Error:", err);
@@ -73,11 +92,22 @@ export default function IssueQueue() {
     }
   };
 
+  // 🟢 ฟังก์ชันสั่งพิมพ์ซ้ำ (Reprint)
+  const handleReprint = async (queueId, queueNum) => {
+    try {
+      await axios.patch(`${apiUrl}/api/queue/${queueId}/reprint`);
+      setSuccessMsg(`ส่งคำสั่งพิมพ์ซ้ำคิว ${queueNum} ไปยังเครื่องพิมพ์แล้ว!`);
+      setTimeout(() => setSuccessMsg(""), 4000);
+    } catch (err) {
+      console.error("Reprint Error:", err);
+      setError("ไม่สามารถสั่งพิมพ์ซ้ำได้");
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-green-50 to-emerald-100 overflow-x-hidden font-sans">
       <Navbar />
 
-      {/* 🟢 ใช้ pb-24 เพื่อป้องกันไม่ให้เมนู Bottom Nav บังปุ่มด้านล่างสุด */}
       <main className="flex-1 overflow-y-auto p-4 pb-28 md:pb-10 flex flex-col items-center justify-center">
         
         <div className="max-w-md w-full bg-white/90 backdrop-blur-xl rounded-[2rem] shadow-2xl overflow-hidden border border-white my-auto">
@@ -89,12 +119,19 @@ export default function IssueQueue() {
             <p className="text-green-50 font-medium mt-1 text-sm relative z-10">กรอกข้อมูลลูกค้าเพื่อรับบริการ</p>
           </div>
 
-          <form onSubmit={handleIssueQueue} className="p-8 pb-8 text-left space-y-6">
+          <form onSubmit={handleIssueQueue} className="p-8 pb-6 text-left space-y-6">
             
             {/* แสดง Error */}
             {error && (
               <div className="bg-red-50/90 text-red-500 p-3 rounded-xl text-sm text-center font-bold border border-red-100">
                 {error}
+              </div>
+            )}
+
+            {/* แสดง Success Message */}
+            {successMsg && (
+              <div className="bg-emerald-50/90 text-emerald-600 p-3 rounded-xl text-sm text-center font-bold border border-emerald-100 animate-pulse">
+                {successMsg}
               </div>
             )}
 
@@ -194,7 +231,7 @@ export default function IssueQueue() {
               </div>
             )}
 
-            {/* 🟢 ปุ่มพิมพ์บัตรคิว */}
+            {/* ปุ่มพิมพ์บัตรคิว */}
             <button
               type="submit"
               disabled={loading}
@@ -212,25 +249,55 @@ export default function IssueQueue() {
             </button>
           </form>
 
-          {/* ป๊อปอัปแจ้งผลสำเร็จแบบใหม่ */}
+          {/* ป๊อปอัปแจ้งผลคิวล่าสุดและปุ่มพิมพ์ซ้ำ */}
           {lastQueue && !loading && (
-            <div className="bg-gradient-to-br from-green-100 to-emerald-50 p-6 border-t border-white animate-fade-in-up m-5 rounded-3xl shadow-inner text-center relative overflow-hidden">
+            <div className="bg-gradient-to-br from-green-100 to-emerald-50 p-6 border-t border-white m-5 rounded-3xl shadow-inner text-center relative overflow-hidden">
               <div className="absolute -top-10 -right-10 w-24 h-24 bg-emerald-400/20 rounded-full blur-xl"></div>
-              <p className="text-emerald-800 font-bold mb-2 uppercase tracking-wider text-xs">ออกคิวสำเร็จ</p>
+              <p className="text-emerald-800 font-bold mb-2 uppercase tracking-wider text-xs">ออกคิวสำเร็จล่าสุด</p>
               <div className="flex items-center justify-center gap-3 text-emerald-600 mb-2 relative z-10">
                 <FaTicketAlt className="text-3xl" />
                 <span className="text-6xl font-black drop-shadow-sm">{lastQueue.queue_number}</span>
               </div>
               <p className="text-sm font-bold text-gray-500 relative z-10">
-                {lastQueue.service_type === 'walkin' ? '🛒 ซื้อหน้าร้าน' : '📦 รับสินค้าจอง'}
+                {lastQueue.service_type === 'walkin' ? '🛒 ซื้อหน้าร้าน' : '📦 รับสินค้าจอง'} {lastQueue.customer_phone && `(${lastQueue.customer_phone})`}
               </p>
-              {lastQueue.booking_number && (
-                <p className="text-xs font-bold bg-white text-emerald-700 py-1.5 px-3 rounded-lg mt-3 inline-block shadow-sm relative z-10">
-                  {lastQueue.booking_number}
-                </p>
-              )}
+              
+              <button
+                onClick={() => handleReprint(lastQueue.id, lastQueue.queue_number)}
+                className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 mx-auto active:scale-95 relative z-10"
+              >
+                <FaRedo className="text-xs" /> พิมพ์บัตรคิวนี้ซ้ำ
+              </button>
             </div>
           )}
+
+          {/* 🟢 ส่วนแสดงประวัติคิวที่ออกไปแล้ว (Recent Issued List) */}
+          <div className="p-6 bg-gray-50 border-t border-gray-100">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <FaHistory /> ประวัติคิวที่ออกล่าสุด (พิมพ์ซ้ำได้)
+            </h3>
+            
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+              {recentIssued.map((q) => (
+                <div key={q.id} className="bg-white p-3 rounded-xl border border-gray-200 shadow-xs flex items-center justify-between">
+                  <div>
+                    <span className="text-lg font-black text-gray-800">{q.queue_number}</span>
+                    <span className="text-xs text-gray-400 ml-2">({q.service_type === 'walkin' ? 'ซื้อหน้าร้าน' : 'รับจอง'})</span>
+                  </div>
+                  <button
+                    onClick={() => handleReprint(q.id, q.queue_number)}
+                    className="bg-gray-100 hover:bg-emerald-50 text-emerald-600 p-2 rounded-lg text-xs font-bold transition-all border border-gray-200 hover:border-emerald-300 flex items-center gap-1 active:scale-95"
+                    title="พิมพ์ซ้ำ"
+                  >
+                    <FaPrint /> พิมพ์ซ้ำ
+                  </button>
+                </div>
+              ))}
+              {recentIssued.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-2">ยังไม่มีประวัติการออกคิวในขณะนี้</p>
+              )}
+            </div>
+          </div>
 
         </div>
       </main>

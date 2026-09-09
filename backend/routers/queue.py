@@ -156,3 +156,22 @@ async def mark_queue_as_printed(queue_id: str):
         return {"status": "success", "message": "Marked as printed"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.patch("/{queue_id}/reprint")
+async def reprint_queue(queue_id: str):
+    try:
+        valid_id = ObjectId(queue_id)
+        # รีเซ็ตสถานะ printed ให้เป็น False เพื่อให้ Print Agent ดึงไปพิมพ์ซ้ำ
+        result = await queue_collection.find_one_and_update(
+            {"_id": valid_id},
+            {"$set": {"printed": False}},
+            return_document=True
+        )
+        if not result:
+            raise HTTPException(status_code=404, detail="ไม่พบคิวที่ต้องการพิมพ์ซ้ำ")
+        
+        result["id"] = str(result["_id"])
+        result.pop("_id", None)
+        return {"status": "success", "message": "Queue marked for reprint", "queue": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
