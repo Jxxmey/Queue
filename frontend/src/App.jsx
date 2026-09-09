@@ -7,6 +7,7 @@ import Cashier from "./pages/Cashier";
 import Display from "./pages/Display";
 import Error404 from "./pages/Error404";
 import AdminQueue from "./pages/AdminQueue";
+import TvDisplay from './pages/TvDisplay';
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
           <Route path="/cashier" element={<Cashier />} />
           <Route path="/display" element={<Display />} />
           <Route path="/admin" element={<AdminQueue />} />
+          <Route path="/tv" element={<TvDisplay />} />
           <Route path="*" element={<Error404 />} />
         </Routes>
       </div>

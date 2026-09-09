@@ -44,8 +44,8 @@ export default function Navbar() {
   );
 
   const navLinks = [
-    { path: "/cashier", name: "เรียกคิว", icon: <FaDesktop className="text-xl mb-1" /> },
     { path: "/sale", name: "ออกคิว", icon: <FaPrint className="text-xl mb-1" /> },
+    { path: "/cashier", name: "เรียกคิว", icon: <FaDesktop className="text-xl mb-1" /> },
     { path: "/display", name: "หน้าจอทีวี", icon: <FaTv className="text-xl mb-1" />, target: "_blank" },
     // แสดงเมนูจัดการคิวเฉพาะตำแหน่งที่กำหนด
     ...(canAccessAdmin ? [{ path: "/admin", name: "จัดการคิว", icon: <FaCog className="text-xl mb-1" /> }] : [])

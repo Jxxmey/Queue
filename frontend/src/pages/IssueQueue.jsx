@@ -172,7 +172,7 @@ export default function IssueQueue() {
                   }`}
                 >
                   <FaBoxOpen className="text-3xl" />
-                  <span className="font-bold text-sm tracking-wide">รับสินค้าจอง</span>
+                  <span className="font-bold text-sm tracking-wide">จองสินค้า</span>
                 </div>
               </div>
             </div>

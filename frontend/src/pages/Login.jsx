@@ -26,7 +26,7 @@ export default function Login() {
       localStorage.setItem("token", response.data.access_token);
       localStorage.setItem("officer", JSON.stringify(response.data.officer));
 
-      navigate("/cashier"); 
+      navigate("/sale"); 
       
     } catch (err) {
       setError(err.response?.data?.detail || "เกิดข้อผิดพลาดในการเข้าสู่ระบบ");
@@ -59,7 +59,7 @@ export default function Login() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
-              placeholder="เช่น 5667"
+              placeholder="เช่น 1234"
             />
           </div>
 
