@@ -256,7 +256,7 @@ class PrintAgentApp:
         self.entry_api.pack(anchor=tk.W, pady=(0, 10))
 
         tk.Label(frame_mid, text="URL สำหรับเช็คคิว (Frontend):").pack(anchor=tk.W, pady=(0, 2))
-        self.url_var = tk.StringVar(value="https://queue-4c2l.onrender.com")
+        self.url_var = tk.StringVar(value="https://queue-jjq4.onrender.com")
         self.entry_url = ttk.Entry(frame_mid, textvariable=self.url_var, width=55)
         self.entry_url.pack(anchor=tk.W, pady=(0, 15))
 

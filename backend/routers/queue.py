@@ -12,7 +12,6 @@ queue_collection = get_collection("queues")
 
 # ฟังก์ชันตัวช่วยสำหรับ Gen เลขคิว
 async def generate_queue_number():
-    # ในใช้งานจริงควรเช็คคิวของวันปัจจุบัน
     count = await queue_collection.count_documents({"status": {"$ne": "cancelled"}})
     return f"A{count + 1:03d}"
 
@@ -22,7 +21,7 @@ async def issue_queue(queue_data: QueueCreate):
     
     waiting_count = await queue_collection.count_documents({"status": "waiting"})
     
-    # 📌 เพิ่ม service_type และ booking_number
+    # 📌 เพิ่มฟิลด์ "printed": False เข้าไป เพื่อให้ Print Agent ดึงไปพิมพ์ได้
     new_queue = {
         "queue_number": queue_num,
         "customer_phone": queue_data.customer_phone,
@@ -33,14 +32,12 @@ async def issue_queue(queue_data: QueueCreate):
         "counter_number": None,
         "created_at": datetime.utcnow(),
         "called_at": None,
-        "printed": False # เพิ่มสถานะว่าถูกสั่งปริ้นไปหรือยัง
+        "printed": False # 🟢 สำคัญมาก: ตัวนี้ทำให้ Print Agent รู้ว่าคิวนี้ยังไม่ได้ปริ้น
     }
     
     result = await queue_collection.insert_one(new_queue)
     new_queue["id"] = str(result.inserted_id)
     new_queue["waiting_ahead"] = waiting_count
-    
-    # await manager.broadcast_to_printer(new_queue)
     
     return new_queue
 
@@ -56,20 +53,18 @@ async def get_active_queues():
             
         return queues
     except Exception as e:
-        print(f"Active queue fetch error: {str(e)}") # Check Render logs for this print
+        print(f"Active queue fetch error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @router.post("/{queue_id}/call")
 async def call_queue(queue_id: str, call_data: QueueCall):
     try:
-        # ตรวจสอบก่อนว่า queue_id ที่ส่งมา เป็นรูปแบบ ObjectId ที่ถูกต้องหรือไม่
         valid_id = ObjectId(queue_id)
     except InvalidId:
         raise HTTPException(status_code=400, detail="รูปแบบ Queue ID ไม่ถูกต้อง")
 
-    # อัปเดตสถานะคิว
     result = await queue_collection.find_one_and_update(
-        {"_id": valid_id}, # ใช้ valid_id ที่เป็น ObjectId แล้ว
+        {"_id": valid_id},
         {"$set": {
             "status": "calling", 
             "counter_number": call_data.counter_number,
@@ -81,7 +76,6 @@ async def call_queue(queue_id: str, call_data: QueueCall):
     if not result:
         raise HTTPException(status_code=404, detail="ไม่พบคิวที่ต้องการเรียก")
         
-    # แปลงผลลัพธ์เพื่อส่งกลับไปให้ Frontend
     result["id"] = str(result["_id"])
     result.pop("_id", None) 
     
@@ -96,7 +90,6 @@ async def get_recent_called_queues():
         
         queues = await cursor.to_list(length=5)
         
-        # 📌 จุดที่ต้องแก้: แปลง ObjectId ให้เป็น String เหมือนกัน
         for q in queues:
             q["id"] = str(q["_id"]) 
             q.pop("_id", None)       
@@ -112,7 +105,6 @@ async def update_queue_status(queue_id: str, status_data: QueueStatusUpdate):
     except InvalidId:
         raise HTTPException(status_code=400, detail="รูปแบบ Queue ID ไม่ถูกต้อง")
 
-    # อัปเดตสถานะในฐานข้อมูล
     result = await queue_collection.find_one_and_update(
         {"_id": valid_id},
         {"$set": {"status": status_data.status}},
@@ -134,12 +126,12 @@ async def update_queue_status(queue_id: str, status_data: QueueStatusUpdate):
 @router.get("/unprinted")
 async def get_unprinted_queues():
     try:
-        # หาคิวที่สถานะ waiting และยังไม่มีฟิลด์ printed (หรือ printed เป็น false) 
+        # ค้นหาคิวที่สถานะ waiting และ printed ไม่ใช่ True
         cursor = queue_collection.find(
             {"status": "waiting", "printed": {"$ne": True}}
         ).sort("created_at", 1) 
         
-        queues = await cursor.to_list(length=10) # ดึงทีละ 10 คิวเพื่อกันโหลดหนัก
+        queues = await cursor.to_list(length=10)
         
         for q in queues:
             q["id"] = str(q["_id"])
