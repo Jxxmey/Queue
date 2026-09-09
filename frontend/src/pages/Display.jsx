@@ -14,6 +14,10 @@ export default function Display() {
 
   const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
+  // 🟢 อ่านค่า branch_id จาก URL ถ้าไม่มีให้ใช้ Main
+  const queryParams = new URLSearchParams(window.location.search);
+  const branch_id = queryParams.get("branch_id") || "Main";
+
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(timer);
@@ -21,10 +25,13 @@ export default function Display() {
 
   const fetchQueues = async () => {
     try {
-      const activeRes = await axios.get(`${apiUrl}/api/queue/active`);
+      // 🟢 แนบ branch_id ไปกับ URL ทุกครั้งเพื่อดึงคิวเฉพาะสาขาตัวเอง
+      const branchQuery = `?branch_id=${branch_id}`;
+
+      const activeRes = await axios.get(`${apiUrl}/api/queue/active${branchQuery}`);
       setWaitingQueues(activeRes.data);
 
-      const recentRes = await axios.get(`${apiUrl}/api/queue/recent`);
+      const recentRes = await axios.get(`${apiUrl}/api/queue/recent${branchQuery}`);
       const calledList = recentRes.data;
       setRecentQueues(calledList);
 
@@ -50,9 +57,9 @@ export default function Display() {
     fetchQueues();
     const interval = setInterval(fetchQueues, 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [branch_id]); // 🟢 เพิ่ม branch_id เป็น dependency
 
-  // 🟢 ฟังก์ชันเล่นเสียงที่ยิงผ่าน Proxy API ของตัวเอง (แก้ปัญหา CORS ได้ 100%)
+  // ฟังก์ชันเล่นเสียงที่ยิงผ่าน Proxy API ของตัวเอง (แก้ปัญหา CORS ได้ 100%)
   const playProxyTTS = (text, lang) => {
     return new Promise((resolve, reject) => {
       // ใช้ URL Backend ของเราเอง
@@ -66,7 +73,7 @@ export default function Display() {
     });
   };
 
-  // 🟢 จัดการคิวเสียง 2 ภาษา
+  // จัดการคิวเสียง 2 ภาษา
   useEffect(() => {
     if (queueToSpeak && audioEnabled) {
       console.log(`เตรียมพูดหมายเลข: ${queueToSpeak.queue_number} (ผ่าน Proxy API)`);
@@ -90,7 +97,8 @@ export default function Display() {
       <div className="h-screen w-screen bg-gradient-to-br from-green-700 to-emerald-900 flex flex-col items-center justify-center text-white p-5">
         <div className="bg-white/10 backdrop-blur-md p-12 rounded-3xl border border-white/20 shadow-2xl flex flex-col items-center max-w-lg w-full">
           <FaVolumeUp className="text-7xl text-emerald-300 drop-shadow-lg mb-6 animate-pulse" />
-          <h1 className="text-4xl font-black tracking-wide drop-shadow-md mb-4 text-center">เริ่มระบบคิว (Proxy TTS)</h1>
+          <h1 className="text-4xl font-black tracking-wide drop-shadow-md mb-2 text-center">เริ่มระบบคิว (Proxy TTS)</h1>
+          <p className="text-emerald-300 text-sm mb-4">สาขาที่เชื่อมต่อ: {branch_id}</p> {/* 🟢 แสดงชื่อสาขา */}
           <p className="text-emerald-200 text-center text-lg mb-8">
             กดปุ่มด้านล่างเพื่อเริ่มระบบหน้าจอ (ต้องการการคลิกเพื่อรับสิทธิ์เปิดเสียง)
           </p>

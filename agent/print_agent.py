@@ -17,12 +17,12 @@ class PrintJob(BaseModel):
     id: str
     queue_number: str
     service_type: str
-    booking_number: str | None = None   # 🟢 อนุญาตให้เป็น None ได้
-    customer_phone: str | None = None # 🟢 อนุญาตให้เป็น None ได้
+    booking_number: str | None = None   
+    customer_phone: str | None = None 
     queues_ahead: int = 0
     officer_name: str = "ระบบอัตโนมัติ"
+    branch_name: str = "Studio 7" # 🟢 เพิ่มฟิลด์ชื่อสาขา (ค่าเริ่มต้นเป็น Studio 7)
 
-# ฟังก์ชันตัวช่วย (QR / Barcode)
 def generate_qrcode(data: str, filename: str):
     qr = qrcode.QRCode(version=1, box_size=6, border=1)
     qr.add_data(data)
@@ -45,11 +45,11 @@ def execute_cut(hDC):
         print(f"Cannot cut: {e}")
 
 # ==========================================
-# 🟢 ฟังก์ชันพิมพ์ 2 รอบ (ลูกค้า + ร้านค้า)
+# ฟังก์ชันพิมพ์ 2 รอบ (ลูกค้า + ร้านค้า)
 # ==========================================
 def print_receipt(job: PrintJob, printer_name: str, frontend_url: str):
     time_str = datetime.now().strftime("%d/%m/%Y %H:%M")
-    service_text = "ซื้อหน้าร้าน (Walk-in)" if job.service_type == "walkin" else "รับสินค้าจอง (Pre-order)"
+    service_text = "ซื้อหน้าร้าน (Walk-in)" if job.service_type == "walkin" else "จองสินค้า (Pre-order)"
     
     # ----------------------------------------
     # Document 1: ส่วนของลูกค้า
@@ -95,14 +95,16 @@ def print_receipt(job: PrintJob, printer_name: str, frontend_url: str):
             except Exception as e:
                 return y_offset
 
-        # เริ่มพิมพ์โลโก้
         logo_path = "logo.png"
         if os.path.exists(logo_path):
             current_y = draw_image_center1(logo_path, current_y, target_width=220)
         else:
             current_y = draw_text_center1("STUDIO 7", font_medium, current_y)
 
-        # 🟢 เพิ่มข้อความ ส่วนสำหรับลูกค้า
+        # 🟢 แสดงชื่อสาขาบนบัตรคิวลูกค้า
+        current_y = draw_text_center1(f"สาขา: {job.branch_name}", font_small, current_y)
+        current_y += 5
+
         current_y = draw_text_center1("** ส่วนสำหรับลูกค้า **", font_normal, current_y)
         current_y = draw_text_center1("บัตรคิวรับบริการ", font_normal, current_y)
         current_y += 5
@@ -116,15 +118,11 @@ def print_receipt(job: PrintJob, printer_name: str, frontend_url: str):
         current_y = draw_text_center1("สแกนเพื่อดูสถานะคิว", font_small, current_y)
         current_y += 15
         
-        # แสดงจำนวนคิวก่อนหน้าตามจริง
         current_y = draw_text_center1(f"คิวก่อนหน้า: {job.queues_ahead} คิว", font_medium, current_y)
         current_y = draw_text_center1(f"เวลาออกบัตร: {time_str}", font_small, current_y)
         current_y += 5
-        
-        # 🟢 เพิ่มเงื่อนไขการเรียกคิว
         current_y = draw_text_center1("(หากเรียกแล้วไม่มา ขออนุญาตข้ามคิว)", font_xsmall, current_y)
         
-        # ฟีดกระดาษและสั่งตัด
         current_y += 80
         execute_cut(hDC1)
         
@@ -148,6 +146,7 @@ def print_receipt(job: PrintJob, printer_name: str, frontend_url: str):
         
         font_medium2 = win32ui.CreateFont({"name": "Tahoma", "height": 40, "weight": 700})
         font_normal2 = win32ui.CreateFont({"name": "Tahoma", "height": 28, "weight": 400})
+        font_small2 = win32ui.CreateFont({"name": "Tahoma", "height": 22, "weight": 400})
         
         center_x = 280
         current_y = 20
@@ -185,6 +184,8 @@ def print_receipt(job: PrintJob, printer_name: str, frontend_url: str):
                 return y_offset
 
         current_y = draw_text_center2("** ส่วนสำหรับพนักงาน **", font_normal2, current_y)
+        # 🟢 แสดงชื่อสาขาบนบัตรคิวพนักงาน
+        current_y = draw_text_center2(f"สาขา: {job.branch_name}", font_small2, current_y)
         current_y += 10
         current_y = draw_text_left2(f"คิว: {job.queue_number}", font_medium2, current_y)
         current_y = draw_text_left2(f"พนักงาน: {job.officer_name}", font_normal2, current_y)
@@ -202,7 +203,6 @@ def print_receipt(job: PrintJob, printer_name: str, frontend_url: str):
             book_bc = generate_barcode(job.booking_number, "temp_book_bc.png")
             current_y = draw_image_center2(book_bc, current_y, target_width=400)
 
-        # ฟีดกระดาษและสั่งตัดส่วนจบ
         current_y += 100
         execute_cut(hDC2)
 
@@ -226,7 +226,7 @@ class PrintAgentApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Studio 7 - Remote Print Agent (Cloud Sync)")
-        self.root.geometry("550x420")
+        self.root.geometry("550x480") 
         self.root.resizable(False, False)
         
         self.printers = [p[2] for p in win32print.EnumPrinters(win32print.PRINTER_ENUM_LOCAL | win32print.PRINTER_ENUM_CONNECTIONS)]
@@ -249,6 +249,11 @@ class PrintAgentApp:
 
         frame_mid = tk.Frame(self.root, padx=30, pady=10)
         frame_mid.pack(fill=tk.BOTH, expand=True)
+
+        tk.Label(frame_mid, text="รหัสสาขา (Branch ID) เช่น 55:").pack(anchor=tk.W, pady=(0, 2))
+        self.branch_var = tk.StringVar(value="182")
+        self.entry_branch = ttk.Entry(frame_mid, textvariable=self.branch_var, width=55)
+        self.entry_branch.pack(anchor=tk.W, pady=(0, 10))
 
         tk.Label(frame_mid, text="URL เซิร์ฟเวอร์ API (Backend):").pack(anchor=tk.W, pady=(0, 2))
         self.api_var = tk.StringVar(value="https://queue-4c2l.onrender.com")
@@ -284,17 +289,19 @@ class PrintAgentApp:
             self.cb_printers.config(state="readonly")
             self.entry_api.config(state="normal")
             self.entry_url.config(state="normal")
+            self.entry_branch.config(state="normal") 
         else:
-            if not self.printer_var.get() or not self.api_var.get():
-                messagebox.showwarning("แจ้งเตือน", "กรุณากรอกข้อมูลให้ครบ")
+            if not self.printer_var.get() or not self.api_var.get() or not self.branch_var.get():
+                messagebox.showwarning("แจ้งเตือน", "กรุณากรอกข้อมูลให้ครบ (โดยเฉพาะรหัสสาขา)")
                 return
 
             self.is_running = True
             self.btn_start.config(text="⏹ หยุดการเชื่อมต่อ", bg="red")
-            self.lbl_status.config(text="สถานะ: กำลังซิงค์ข้อมูลกับเซิร์ฟเวอร์", fg="green")
+            self.lbl_status.config(text=f"สถานะ: กำลังซิงค์ข้อมูล (สาขา {self.branch_var.get()})", fg="green")
             self.cb_printers.config(state="disabled")
             self.entry_api.config(state="disabled")
             self.entry_url.config(state="disabled")
+            self.entry_branch.config(state="disabled") 
             
             self.polling_thread = threading.Thread(target=self.poll_from_server, daemon=True)
             self.polling_thread.start()
@@ -306,26 +313,27 @@ class PrintAgentApp:
         api_base = self.api_var.get().strip('/')
         printer_name = self.printer_var.get()
         frontend_url = self.url_var.get()
+        branch_id = self.branch_var.get().strip() 
 
         while self.is_running:
             try:
-                self.update_log(f"กำลังเช็คคิวใหม่... ({datetime.now().strftime('%H:%M:%S')})")
+                self.update_log(f"กำลังเช็คคิวใหม่ สาขา {branch_id}... ({datetime.now().strftime('%H:%M:%S')})")
                 
-                # 🟢 ดึงข้อมูลคิวที่ยังไม่ได้ปริ้น
-                res = requests.get(f"{api_base}/api/queue/unprinted", timeout=10)
+                res = requests.get(f"{api_base}/api/queue/unprinted?branch_id={branch_id}", timeout=10)
                 if res.status_code == 200:
                     queues = res.json()
                     
-                    # 🟢 ดึงรายการคิวที่กำลังรอทั้งหมดมาคำนวณจำนวนคิวก่อนหน้าตามจริง
-                    active_res = requests.get(f"{api_base}/api/queue/active", timeout=10)
+                    active_res = requests.get(f"{api_base}/api/queue/active?branch_id={branch_id}", timeout=10)
                     active_queues = active_res.json() if active_res.status_code == 200 else []
                     
                     for q in queues:
                         if not self.is_running: break
                         
-                        # คำนวณหาตำแหน่ง index ของคิวนี้ในคิวที่กำลังรอ
                         queue_num = q['queue_number']
                         my_index = next((i for i, item in enumerate(active_queues) if item['queue_number'] == queue_num), 0)
+                        
+                        # 🟢 ดึง branch_name จากข้อมูลคิวที่ส่งมาจาก Backend
+                        b_name = q.get('branch_name', f"สาขา {branch_id}")
                         
                         job = PrintJob(
                             id=q['id'],
@@ -333,7 +341,8 @@ class PrintAgentApp:
                             service_type=q['service_type'],
                             booking_number=q.get('booking_number'),
                             customer_phone=q.get('customer_phone'),
-                            queues_ahead=my_index # ใช้ตำแหน่ง index เป็นจำนวนคิวก่อนหน้าตามจริง
+                            queues_ahead=my_index,
+                            branch_name=b_name # ส่งชื่อสาขาเข้า PrintJob
                         )
                         
                         self.update_log(f"กำลังปริ้นคิว {job.queue_number}...")
@@ -363,7 +372,8 @@ class PrintAgentApp:
             service_type="preorder", 
             booking_number="F18/PRESTU26099999", 
             customer_phone="0812345678",
-            queues_ahead=3 # ทดสอบจำลองว่ามีคิวก่อนหน้า 3 คิว
+            queues_ahead=3,
+            branch_name="ID335 : Studio 7-Central-Pinklao"
         )
         print_receipt(test_job, printer, f_url)
 

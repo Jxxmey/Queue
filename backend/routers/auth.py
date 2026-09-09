@@ -77,8 +77,14 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
         expires_delta=access_token_expires
     )
     
+    officer_data = dict(current_officer)
+    if "branch_id" not in officer_data and "Branch (ID)" in officer_data:
+        officer_data["branch_id"] = str(officer_data["Branch (ID)"]).replace(",", "").strip()
+    if "branch_name" not in officer_data and "Branch Name" in officer_data:
+        officer_data["branch_name"] = str(officer_data["Branch Name"]).strip()
+
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "officer": current_officer
+        "officer": officer_data
     }

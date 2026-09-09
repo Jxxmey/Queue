@@ -1,38 +1,72 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from datetime import datetime
 from database import get_collection
 from models.schemas import QueueCreate, QueueResponse, QueueCall, QueueStatusUpdate
 from bson import ObjectId
 from bson.errors import InvalidId
-
+from routers.officer import OFFICERS_DB
 
 router = APIRouter(prefix="/api/queue", tags=["Queue"])
 queue_collection = get_collection("queues")
+officer_collection = get_collection("officers") 
 
-# ฟังก์ชันตัวช่วยสำหรับ Gen เลขคิว
-async def generate_queue_number():
-    count = await queue_collection.count_documents({"status": {"$ne": "cancelled"}})
+async def generate_queue_number(branch_id: str):
+    count = await queue_collection.count_documents({
+        "status": {"$ne": "cancelled"},
+        "branch_id": str(branch_id)
+    })
     return f"A{count + 1:03d}"
 
 @router.post("/issue", response_model=QueueResponse)
 async def issue_queue(queue_data: QueueCreate):
-    queue_num = await generate_queue_number()
+    branch_id = "Main"
+    branch_name = "Main Branch"
     
-    waiting_count = await queue_collection.count_documents({"status": "waiting"})
+    try:
+        raw_id = str(queue_data.officer_id).strip()
+        search_id_clean = raw_id.replace(",", "").strip()
+
+        print(f"🔍 กำลังค้นหารหัสพนักงานจาก OFFICERS_DB: '{search_id_clean}'")
+
+        # 🟢 วนลูปค้นหาใน OFFICERS_DB ที่โหลดมาจากไฟล์ CSV
+        officer = None
+        for emp in OFFICERS_DB:
+            db_emp_id = str(emp.get("id", "")).replace(",", "").strip()
+            if db_emp_id == search_id_clean:
+                officer = emp
+                break
+            
+        if officer:
+            branch_id = str(officer.get("branch_id") or "Main").strip()
+            branch_name = str(officer.get("branch_name") or "Main Branch").strip()
+            print(f"🟢 [Issue Queue] สำเร็จ! พบพนักงาน ID: {search_id_clean} -> สังกัดสาขา ID: {branch_id} ({branch_name})")
+        else:
+            print(f"⚠️ [Issue Queue] ไม่พบพนักงาน ID: '{search_id_clean}' ใน OFFICERS_DB! (ใช้สาขาสำรอง: Main)")
+            
+    except Exception as e:
+        print(f"❌ [Issue Queue Error] เกิดข้อผิดพลาด: {e}")
+
+    queue_num = await generate_queue_number(branch_id)
     
-    # 📌 เพิ่มฟิลด์ "printed": False เข้าไป เพื่อให้ Print Agent ดึงไปพิมพ์ได้
+    waiting_count = await queue_collection.count_documents({
+        "status": "waiting", 
+        "branch_id": str(branch_id)
+    })
+    
     new_queue = {
         "queue_number": queue_num,
         "customer_phone": queue_data.customer_phone,
         "officer_id": queue_data.officer_id,
+        "branch_id": str(branch_id),      
+        "branch_name": branch_name,  
         "service_type": queue_data.service_type, 
         "booking_number": queue_data.booking_number,
         "status": "waiting",
         "counter_number": None,
         "created_at": datetime.utcnow(),
         "called_at": None,
-        "printed": False # 🟢 สำคัญมาก: ตัวนี้ทำให้ Print Agent รู้ว่าคิวนี้ยังไม่ได้ปริ้น
+        "printed": False 
     }
     
     result = await queue_collection.insert_one(new_queue)
@@ -42,106 +76,53 @@ async def issue_queue(queue_data: QueueCreate):
     return new_queue
 
 @router.get("/active")
-async def get_active_queues():
+async def get_active_queues(branch_id: str = Query(None)):
     try:
-        cursor = queue_collection.find({"status": "waiting"}).sort("created_at", 1)
+        query = {"status": "waiting"}
+        if branch_id and branch_id != "undefined" and branch_id != "null":
+            query["branch_id"] = str(branch_id).strip()
+            
+        cursor = queue_collection.find(query).sort("created_at", 1)
         queues = await cursor.to_list(length=100)
-        
         for q in queues:
             q["id"] = str(q["_id"])
             q.pop("_id", None)
-            
-        return queues
-    except Exception as e:
-        print(f"Active queue fetch error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.post("/{queue_id}/call")
-async def call_queue(queue_id: str, call_data: QueueCall):
-    try:
-        valid_id = ObjectId(queue_id)
-    except InvalidId:
-        raise HTTPException(status_code=400, detail="รูปแบบ Queue ID ไม่ถูกต้อง")
-
-    result = await queue_collection.find_one_and_update(
-        {"_id": valid_id},
-        {"$set": {
-            "status": "calling", 
-            "counter_number": call_data.counter_number,
-            "called_at": datetime.utcnow()
-        }},
-        return_document=True
-    )
-    
-    if not result:
-        raise HTTPException(status_code=404, detail="ไม่พบคิวที่ต้องการเรียก")
-        
-    result["id"] = str(result["_id"])
-    result.pop("_id", None) 
-    
-    return result
-
-@router.get("/recent")
-async def get_recent_called_queues():
-    try:
-        cursor = queue_collection.find(
-            {"status": {"$in": ["calling", "completed"]}}
-        ).sort("called_at", -1)
-        
-        queues = await cursor.to_list(length=5)
-        
-        for q in queues:
-            q["id"] = str(q["_id"]) 
-            q.pop("_id", None)       
-            
-        return queues
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"ดึงข้อมูลคิวล่าสุดผิดพลาด: {str(e)}")
-
-@router.patch("/{queue_id}/status")
-async def update_queue_status(queue_id: str, status_data: QueueStatusUpdate):
-    try:
-        valid_id = ObjectId(queue_id)
-    except InvalidId:
-        raise HTTPException(status_code=400, detail="รูปแบบ Queue ID ไม่ถูกต้อง")
-
-    result = await queue_collection.find_one_and_update(
-        {"_id": valid_id},
-        {"$set": {"status": status_data.status}},
-        return_document=True
-    )
-
-    if not result:
-        raise HTTPException(status_code=404, detail="ไม่พบคิวที่ต้องการอัปเดต")
-
-    result["id"] = str(result["_id"])
-    result.pop("_id", None)
-    return result
-
-# ==========================================
-# API สำหรับ Print Agent แบบ Remote/Polling
-# ==========================================
-
-# 1. ดึงข้อมูลคิวล่าสุดที่ยังไม่ได้สั่งพิมพ์
-@router.get("/unprinted")
-async def get_unprinted_queues():
-    try:
-        # ค้นหาคิวที่สถานะ waiting และ printed ไม่ใช่ True
-        cursor = queue_collection.find(
-            {"status": "waiting", "printed": {"$ne": True}}
-        ).sort("created_at", 1) 
-        
-        queues = await cursor.to_list(length=10)
-        
-        for q in queues:
-            q["id"] = str(q["_id"])
-            q.pop("_id", None)
-            
         return queues
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 2. อัปเดตสถานะว่าคิวนี้ปริ้นสำเร็จแล้ว
+@router.get("/recent")
+async def get_recent_called_queues(branch_id: str = Query(None)):
+    try:
+        query = {"status": {"$in": ["calling", "completed"]}}
+        if branch_id and branch_id != "undefined" and branch_id != "null":
+            query["branch_id"] = str(branch_id).strip()
+            
+        cursor = queue_collection.find(query).sort("called_at", -1)
+        queues = await cursor.to_list(length=5)
+        for q in queues:
+            q["id"] = str(q["_id"]) 
+            q.pop("_id", None)       
+        return queues
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/unprinted")
+async def get_unprinted_queues(branch_id: str = Query(None)):
+    try:
+        query = {"status": "waiting", "printed": {"$ne": True}}
+        if branch_id and branch_id != "undefined" and branch_id != "null":
+            query["branch_id"] = str(branch_id).strip()
+            
+        cursor = queue_collection.find(query).sort("created_at", 1) 
+        queues = await cursor.to_list(length=10)
+        for q in queues:
+            q["id"] = str(q["_id"])
+            q.pop("_id", None)
+        return queues
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.patch("/{queue_id}/printed")
 async def mark_queue_as_printed(queue_id: str):
     try:
@@ -152,8 +133,8 @@ async def mark_queue_as_printed(queue_id: str):
             return_document=True
         )
         if not result:
-            raise HTTPException(status_code=404, detail="ไม่พบคิว")
-        return {"status": "success", "message": "Marked as printed"}
+            raise HTTPException(status_code=404, detail="Not found")
+        return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -161,17 +142,49 @@ async def mark_queue_as_printed(queue_id: str):
 async def reprint_queue(queue_id: str):
     try:
         valid_id = ObjectId(queue_id)
-        # รีเซ็ตสถานะ printed ให้เป็น False เพื่อให้ Print Agent ดึงไปพิมพ์ซ้ำ
         result = await queue_collection.find_one_and_update(
             {"_id": valid_id},
             {"$set": {"printed": False}},
             return_document=True
         )
         if not result:
-            raise HTTPException(status_code=404, detail="ไม่พบคิวที่ต้องการพิมพ์ซ้ำ")
-        
+            raise HTTPException(status_code=404, detail="Not found")
         result["id"] = str(result["_id"])
         result.pop("_id", None)
-        return {"status": "success", "message": "Queue marked for reprint", "queue": result}
+        return {"status": "success", "queue": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{queue_id}/call")
+async def call_queue(queue_id: str, call_data: QueueCall):
+    try:
+        valid_id = ObjectId(queue_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid Queue ID")
+    result = await queue_collection.find_one_and_update(
+        {"_id": valid_id},
+        {"$set": {"status": "calling", "counter_number": call_data.counter_number, "called_at": datetime.utcnow()}},
+        return_document=True
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Not found")
+    result["id"] = str(result["_id"])
+    result.pop("_id", None)
+    return result
+
+@router.patch("/{queue_id}/status")
+async def update_queue_status(queue_id: str, status_data: QueueStatusUpdate):
+    try:
+        valid_id = ObjectId(queue_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid Queue ID")
+    result = await queue_collection.find_one_and_update(
+        {"_id": valid_id},
+        {"$set": {"status": status_data.status}},
+        return_document=True
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Not found")
+    result["id"] = str(result["_id"])
+    result.pop("_id", None)
+    return result

@@ -13,36 +13,38 @@ export default function IssueQueue() {
   const [officer, setOfficer] = useState(null);
   const [loading, setLoading] = useState(false);
   const [lastQueue, setLastQueue] = useState(null);
-  const [recentIssued, setRecentIssued] = useState([]); // 🟢 เก็บประวัติคิวที่ออกไปแล้ว
+  const [recentIssued, setRecentIssued] = useState([]); 
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   
   const navigate = useNavigate();
   const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-  // ตรวจสอบสถานะการเข้าสู่ระบบและดึงประวัติคิว
+  // ตรวจสอบสถานะการเข้าสู่ระบบและดึงประวัติคิวตามสาขา
   useEffect(() => {
     const savedOfficer = localStorage.getItem("officer");
     if (savedOfficer) {
-      setOfficer(JSON.parse(savedOfficer));
-      fetchRecentIssued();
+      const parsedOfficer = JSON.parse(savedOfficer);
+      setOfficer(parsedOfficer);
+      fetchRecentIssued(parsedOfficer); 
     } else {
       navigate("/login");
     }
   }, [navigate]);
 
-  // ฟังก์ชันดึงประวัติคิวที่ออกโดยพนักงานคนนี้ (หรือคิวล่าสุด)
-  const fetchRecentIssued = async () => {
+  const fetchRecentIssued = async (currentOfficer = officer) => {
+    if (!currentOfficer) return;
     try {
-      const res = await axios.get(`${apiUrl}/api/queue/active`);
-      // เอาคิวล่าสุดขึ้นมาแสดงสัก 5 คิว
+      const branchId = currentOfficer.branch_id || currentOfficer["Branch (ID)"] || currentOfficer.branch || "";
+      const branchQuery = branchId ? `?branch_id=${branchId}` : "";
+      
+      const res = await axios.get(`${apiUrl}/api/queue/active${branchQuery}`);
       setRecentIssued(res.data.slice(-5).reverse());
     } catch (err) {
       console.error("Error fetching recent queues:", err);
     }
   };
 
-  // ฟังก์ชันจัดการเมื่อกด "พิมพ์บัตรคิว"
   const handleIssueQueue = async (e) => {
     e.preventDefault(); 
     setError("");
@@ -50,6 +52,15 @@ export default function IssueQueue() {
 
     if (!phone) {
       setError("กรุณากรอกเบอร์โทรศัพท์ลูกค้า");
+      return;
+    }
+
+    // 🟢 ดึงรหัสพนักงาน และล้างเครื่องหมายคอมมาออกทันที (เช่น "28,682" -> "28682")
+    const rawOfficerId = officer?.id || officer?.ID || officer?.officer_id;
+    const currentOfficerId = rawOfficerId ? String(rawOfficerId).replace(",", "").trim() : "";
+
+    if (!currentOfficerId) {
+      setError("ไม่พบข้อมูลรหัสพนักงาน กรุณาออกจากระบบแล้วเข้าใหม่");
       return;
     }
 
@@ -68,7 +79,7 @@ export default function IssueQueue() {
     try {
       const payload = {
         customer_phone: phone,
-        officer_id: officer.id,
+        officer_id: currentOfficerId, // ส่งรหัสพนักงานที่ล้างคอมมาแล้วแบบเดียวกับ Login
         service_type: serviceType,
         booking_number: finalBookingNumber
       };
@@ -77,12 +88,10 @@ export default function IssueQueue() {
       setLastQueue(response.data);
       setSuccessMsg(`ออกบัตรคิว ${response.data.queue_number} สำเร็จ! กำลังสั่งพิมพ์...`);
       
-      // ล้างข้อมูลฟอร์มหลังจากออกคิวสำเร็จ
       setPhone(""); 
       setBookingDigits("");
       
-      // รีเฟรชประวัติ
-      fetchRecentIssued();
+      fetchRecentIssued(officer);
       
     } catch (err) {
       console.error("Issue Queue Error:", err);
@@ -92,7 +101,6 @@ export default function IssueQueue() {
     }
   };
 
-  // 🟢 ฟังก์ชันสั่งพิมพ์ซ้ำ (Reprint)
   const handleReprint = async (queueId, queueNum) => {
     try {
       await axios.patch(`${apiUrl}/api/queue/${queueId}/reprint`);
@@ -104,6 +112,8 @@ export default function IssueQueue() {
     }
   };
 
+  const branchNameDisplay = officer?.branch_name || officer?.["Branch Name"] || "สาขาหลัก";
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-green-50 to-emerald-100 overflow-x-hidden font-sans">
       <Navbar />
@@ -112,30 +122,28 @@ export default function IssueQueue() {
         
         <div className="max-w-md w-full bg-white/90 backdrop-blur-xl rounded-[2rem] shadow-2xl overflow-hidden border border-white my-auto">
           
-          {/* ส่วนหัว */}
           <div className="bg-gradient-to-r from-green-600 to-emerald-500 p-6 flex flex-col items-center relative overflow-hidden">
             <div className="absolute -top-10 -right-10 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
             <h1 className="text-2xl font-black text-white tracking-wide relative z-10">ออกบัตรคิวใหม่</h1>
-            <p className="text-green-50 font-medium mt-1 text-sm relative z-10">กรอกข้อมูลลูกค้าเพื่อรับบริการ</p>
+            <p className="text-green-50 font-medium mt-1 text-sm relative z-10">
+              สาขา: {branchNameDisplay}
+            </p>
           </div>
 
           <form onSubmit={handleIssueQueue} className="p-8 pb-6 text-left space-y-6">
             
-            {/* แสดง Error */}
             {error && (
               <div className="bg-red-50/90 text-red-500 p-3 rounded-xl text-sm text-center font-bold border border-red-100">
                 {error}
               </div>
             )}
 
-            {/* แสดง Success Message */}
             {successMsg && (
               <div className="bg-emerald-50/90 text-emerald-600 p-3 rounded-xl text-sm text-center font-bold border border-emerald-100 animate-pulse">
                 {successMsg}
               </div>
             )}
 
-            {/* ช่องกรอกเบอร์โทร */}
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider flex items-center gap-2">
                 <FaPhone className="text-emerald-500 text-sm"/> เบอร์โทรศัพท์ลูกค้า
@@ -150,7 +158,6 @@ export default function IssueQueue() {
               />
             </div>
 
-            {/* เลือกประเภท */}
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider">
                 ประเภทการใช้บริการ
@@ -177,7 +184,6 @@ export default function IssueQueue() {
               </div>
             </div>
 
-            {/* ฟอร์มสำหรับการจอง */}
             {serviceType === "preorder" && (
               <div className="animate-fade-in-up space-y-5 bg-emerald-50/50 p-5 rounded-3xl border border-emerald-100">
                 <div>
@@ -231,7 +237,6 @@ export default function IssueQueue() {
               </div>
             )}
 
-            {/* ปุ่มพิมพ์บัตรคิว */}
             <button
               type="submit"
               disabled={loading}
@@ -249,7 +254,6 @@ export default function IssueQueue() {
             </button>
           </form>
 
-          {/* ป๊อปอัปแจ้งผลคิวล่าสุดและปุ่มพิมพ์ซ้ำ */}
           {lastQueue && !loading && (
             <div className="bg-gradient-to-br from-green-100 to-emerald-50 p-6 border-t border-white m-5 rounded-3xl shadow-inner text-center relative overflow-hidden">
               <div className="absolute -top-10 -right-10 w-24 h-24 bg-emerald-400/20 rounded-full blur-xl"></div>
@@ -271,10 +275,9 @@ export default function IssueQueue() {
             </div>
           )}
 
-          {/* 🟢 ส่วนแสดงประวัติคิวที่ออกไปแล้ว (Recent Issued List) */}
           <div className="p-6 bg-gray-50 border-t border-gray-100">
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <FaHistory /> ประวัติคิวที่ออกล่าสุด (พิมพ์ซ้ำได้)
+              <FaHistory /> ประวัติคิวที่รอเรียก (สาขาปัจจุบัน)
             </h3>
             
             <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
@@ -294,7 +297,7 @@ export default function IssueQueue() {
                 </div>
               ))}
               {recentIssued.length === 0 && (
-                <p className="text-xs text-gray-400 text-center py-2">ยังไม่มีประวัติการออกคิวในขณะนี้</p>
+                <p className="text-xs text-gray-400 text-center py-2">ยังไม่มีประวัติคิวที่รอในสาขานี้</p>
               )}
             </div>
           </div>

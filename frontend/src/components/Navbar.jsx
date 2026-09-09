@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { FaDesktop, FaPrint, FaTv, FaUserCircle, FaSignOutAlt, FaCog } from "react-icons/fa";
+import { FaDesktop, FaPrint, FaTv, FaUserCircle, FaSignOutAlt, FaCog, FaStore } from "react-icons/fa";
 
 export default function Navbar() {
   const [officer, setOfficer] = useState(null);
@@ -35,19 +35,27 @@ export default function Navbar() {
 
   if (!officer) return null;
 
-  // 🟢 ตรวจสอบสิทธิ์ตำแหน่งสำหรับเมนู Admin (cashier, Branch Sales Manager, Assistant Branch Sales Manager)
+  // 🟢 ตรวจสอบสิทธิ์ตำแหน่ง (อ้างอิงจากคอลัมน์ Position)
   const allowedRoles = ["cashier", "Branch Sales Manager", "Assistant Branch Sales Manager"];
-  const officerRole = officer.role || officer.position || officer.title || "";
+  const officerRole = officer.position || officer.Position || "";
   
   const canAccessAdmin = allowedRoles.some(role => 
     officerRole.toLowerCase().includes(role.toLowerCase())
   );
 
+  // 🟢 อ้างอิงสาขาจากข้อมูลหลังบ้านโดยตรง (ใช้ key ตัวเล็กตามที่ Python ส่งมา)
+  const branchId = officer.branch_id || officer["Branch (ID)"] || "Main";
+  const branchName = officer.branch_name || officer["Branch Name"] || branchId;
+
+  // 🟢 อ้างอิงชื่อพนักงาน (ใช้ key ตัวเล็ก)
+  const officerFirstName = officer.name || officer.Name || "พนักงาน";
+  const officerLastName = officer.surname || officer.Surname || "";
+
   const navLinks = [
     { path: "/sale", name: "ออกคิว", icon: <FaPrint className="text-xl mb-1" /> },
     { path: "/cashier", name: "เรียกคิว", icon: <FaDesktop className="text-xl mb-1" /> },
-    { path: "/display", name: "หน้าจอทีวี", icon: <FaTv className="text-xl mb-1" />, target: "_blank" },
-    // แสดงเมนูจัดการคิวเฉพาะตำแหน่งที่กำหนด
+    // 🟢 ส่ง Branch ID และ Branch Name ไปให้หน้า TV Display
+    { path: `/tv?branch_id=${branchId}&branch_name=${encodeURIComponent(branchName)}`, name: "หน้าจอทีวี", icon: <FaTv className="text-xl mb-1" />, target: "_blank" },
     ...(canAccessAdmin ? [{ path: "/admin", name: "จัดการคิว", icon: <FaCog className="text-xl mb-1" /> }] : [])
   ];
 
@@ -61,6 +69,13 @@ export default function Navbar() {
             <div className="flex items-center gap-3">
               <img src="/assets/logo.png" alt="Studio 7 Logo" className="h-9 w-auto object-contain bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg shadow-sm" />
               <span className="font-extrabold text-xl tracking-wider hidden sm:block">Queue System</span>
+              
+              {/* 🟢 แสดงชื่อสาขาบน Navbar */}
+              <div className="hidden sm:block border-l border-green-400 h-6 mx-2"></div>
+              <div className="hidden sm:flex items-center gap-1.5 bg-green-800/30 px-3 py-1 rounded-full text-sm font-bold border border-green-500/50 shadow-inner">
+                <FaStore className="text-emerald-200" />
+                <span className="text-green-50 truncate max-w-[150px]" title={branchName}>{branchName}</span>
+              </div>
             </div>
 
             <div className="hidden md:flex items-center gap-4">
@@ -70,7 +85,7 @@ export default function Navbar() {
                   to={link.path}
                   target={link.target || "_self"}
                   className={`flex items-center gap-2 transition-all px-4 py-2 rounded-xl ${
-                    location.pathname === link.path 
+                    location.pathname === link.path.split('?')[0] 
                       ? "bg-white/20 text-white font-bold backdrop-blur-md shadow-inner" 
                       : "text-green-100 hover:bg-white/10 hover:text-white"
                   }`}
@@ -86,14 +101,18 @@ export default function Navbar() {
                 className="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full transition-all border border-white/20 backdrop-blur-md"
               >
                 <FaUserCircle className="text-xl sm:text-2xl" />
-                <span className="text-sm font-bold hidden sm:block">{officer.name}</span>
+                <span className="text-sm font-bold hidden sm:block">{officerFirstName}</span>
               </button>
 
               {showDropdown && (
-                <div className="absolute right-0 top-14 mt-2 w-56 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white overflow-hidden text-gray-800 animate-fade-in-up z-50">
+                <div className="absolute right-0 top-14 mt-2 w-64 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white overflow-hidden text-gray-800 animate-fade-in-up z-50">
                   <div className="px-5 py-4 bg-gradient-to-br from-gray-50 to-gray-100 border-b border-gray-100">
-                    <p className="text-sm font-extrabold text-gray-800">{officer.name} {officer.surname}</p>
+                    <p className="text-sm font-extrabold text-gray-800">{officerFirstName} {officerLastName}</p>
                     <p className="text-xs text-gray-500 mt-1 font-medium">ตำแหน่ง: <span className="text-green-600">{officerRole || "พนักงาน"}</span></p>
+                    {/* 🟢 แสดงชื่อสาขาใน Dropdown เผื่อดูบนมือถือ */}
+                    <p className="text-xs text-emerald-600 mt-2 font-bold flex items-center gap-1">
+                      <FaStore /> {branchName}
+                    </p>
                   </div>
                   <button
                     onClick={handleLogout}
@@ -117,7 +136,7 @@ export default function Navbar() {
               to={link.path}
               target={link.target || "_self"}
               className={`flex flex-col items-center justify-center w-full h-full space-y-1 transition-all ${
-                location.pathname === link.path 
+                location.pathname === link.path.split('?')[0]
                   ? "text-emerald-600 font-bold scale-105" 
                   : "text-gray-400 hover:text-gray-600"
               }`}
