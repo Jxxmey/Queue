@@ -8,3 +8,4 @@ websockets>=11.0.3
 python-jose[cryptography]>=3.3.0  # สำหรับทำ JWT Login (ถ้าต้องการ)
 passlib[bcrypt]>=1.7.4            # สำหรับ Hash รหัสผ่าน
 python-multipart
+httpx

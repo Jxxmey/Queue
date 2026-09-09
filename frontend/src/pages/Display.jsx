@@ -7,10 +7,11 @@ export default function Display() {
   const [recentQueues, setRecentQueues] = useState([]);
   const [time, setTime] = useState(new Date());
   
-  // 🟢 สถานะเปิดใช้งานเสียง (เบราว์เซอร์บังคับให้ User คลิกก่อนถึงจะเล่นเสียงได้)
   const [audioEnabled, setAudioEnabled] = useState(false);
   
   const lastCalledId = useRef(null);
+  const [queueToSpeak, setQueueToSpeak] = useState(null);
+
   const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
   useEffect(() => {
@@ -32,7 +33,11 @@ export default function Display() {
         const uniqueCallKey = `${topQueue.id}-${topQueue.called_at}`;
         
         if (lastCalledId.current && lastCalledId.current !== uniqueCallKey) {
-          playSpeechAnnouncement(topQueue.queue_number, topQueue.counter_number);
+          setQueueToSpeak({
+            queue_number: topQueue.queue_number,
+            counter_number: topQueue.counter_number,
+            key: uniqueCallKey
+          });
         }
         lastCalledId.current = uniqueCallKey;
       }
@@ -47,54 +52,71 @@ export default function Display() {
     return () => clearInterval(interval);
   }, []);
 
-  // 🟢 ฟังก์ชันเสียงพูด (TTS) ภาษาไทย และ ภาษาอังกฤษ
-  const playSpeechAnnouncement = (queueNum, counterNum) => {
-    // ถ้ายังไม่ได้กดเริ่มระบบเสียง ให้ข้ามไปก่อน
-    if (!audioEnabled || !window.speechSynthesis) return;
-
-    try {
-      window.speechSynthesis.cancel(); // หยุดเสียงเก่าที่อาจจะค้างอยู่
-
-      // แยกตัวอักษรเพื่อให้อ่านทีละตัว เช่น A 0 0 1
-      const spellQueue = queueNum.split('').join(' '); 
-
-      // สร้างคำพูดภาษาไทย
-      const textTh = `ขอเชิญหมายเลข ${spellQueue} ที่เคาน์เตอร์ ${counterNum} ค่ะ`;
-      const utteranceTh = new SpeechSynthesisUtterance(textTh);
-      utteranceTh.lang = 'th-TH';
-      utteranceTh.rate = 0.85; // ปรับความเร็วให้อ่านชัดขึ้น
-
-      // สร้างคำพูดภาษาอังกฤษ
-      const textEn = `Number ${spellQueue}, please proceed to counter ${counterNum}`;
-      const utteranceEn = new SpeechSynthesisUtterance(textEn);
-      utteranceEn.lang = 'en-US';
-      utteranceEn.rate = 0.85;
-
-      // สั่งให้อ่านไทยก่อน แล้วตามด้วยอังกฤษ
-      window.speechSynthesis.speak(utteranceTh);
-      window.speechSynthesis.speak(utteranceEn);
+  // 🟢 ฟังก์ชันเล่นเสียงที่ยิงผ่าน Proxy API ของตัวเอง (แก้ปัญหา CORS ได้ 100%)
+  const playProxyTTS = (text, lang) => {
+    return new Promise((resolve, reject) => {
+      // ใช้ URL Backend ของเราเอง
+      const audioUrl = `${apiUrl}/api/tts?text=${encodeURIComponent(text)}&lang=${lang}`;
+      const audio = new Audio(audioUrl);
       
-    } catch (e) {
-      console.error("Speech play failed:", e);
-    }
+      audio.onended = () => resolve();
+      audio.onerror = (e) => reject(e);
+      
+      audio.play().catch(e => reject(e));
+    });
   };
+
+  // 🟢 จัดการคิวเสียง 2 ภาษา
+  useEffect(() => {
+    if (queueToSpeak && audioEnabled) {
+      console.log(`เตรียมพูดหมายเลข: ${queueToSpeak.queue_number} (ผ่าน Proxy API)`);
+      
+      const spellQueue = queueToSpeak.queue_number.split('').join(' '); 
+      const textTh = `ขอเชิญหมายเลข ${spellQueue} ที่เคาน์เตอร์ ${queueToSpeak.counter_number} ค่ะ`;
+      const textEn = `Number ${spellQueue}, please proceed to counter ${queueToSpeak.counter_number}`;
+      
+      playProxyTTS(textTh, 'th')
+        .then(() => playProxyTTS(textEn, 'en'))
+        .catch(err => console.error("เกิดข้อผิดพลาดในการเล่นเสียง", err));
+    }
+  }, [queueToSpeak, audioEnabled]);
 
   const currentCalling = recentQueues.length > 0 ? recentQueues[0] : null;
   const previousCalling = recentQueues.slice(1, 5);
   const announcementText = "📢 ยินดีต้อนรับสู่ Studio 7 ... โปรดเตรียมหมายเลขคิวของท่านให้พร้อม หากถึงคิวของท่านแล้ว กรุณาติดต่อพนักงานที่เคาน์เตอร์ ... ขอขอบคุณที่ใช้บริการครับ 🙏";
 
-  // 🟢 หน้าจอเปิดใช้งานเสียง (Overlay)
   if (!audioEnabled) {
     return (
-      <div 
-        className="h-screen w-screen bg-gradient-to-br from-green-700 to-emerald-900 flex flex-col items-center justify-center cursor-pointer text-white"
-        onClick={() => setAudioEnabled(true)}
-      >
-        <div className="animate-bounce mb-6">
-          <FaVolumeUp className="text-[6rem] text-emerald-300 drop-shadow-lg" />
+      <div className="h-screen w-screen bg-gradient-to-br from-green-700 to-emerald-900 flex flex-col items-center justify-center text-white p-5">
+        <div className="bg-white/10 backdrop-blur-md p-12 rounded-3xl border border-white/20 shadow-2xl flex flex-col items-center max-w-lg w-full">
+          <FaVolumeUp className="text-7xl text-emerald-300 drop-shadow-lg mb-6 animate-pulse" />
+          <h1 className="text-4xl font-black tracking-wide drop-shadow-md mb-4 text-center">เริ่มระบบคิว (Proxy TTS)</h1>
+          <p className="text-emerald-200 text-center text-lg mb-8">
+            กดปุ่มด้านล่างเพื่อเริ่มระบบหน้าจอ (ต้องการการคลิกเพื่อรับสิทธิ์เปิดเสียง)
+          </p>
+
+          <div className="w-full flex flex-col gap-4">
+            <button 
+              onClick={() => {
+                playProxyTTS("ทดสอบระบบเสียง สวัสดีค่ะ", 'th')
+                  .catch(e => alert("การเชื่อมต่อเสียงมีปัญหา กรุณาตรวจสอบ Backend"));
+              }}
+              className="w-full bg-white/20 hover:bg-white/30 text-white font-bold py-3 rounded-xl transition-all border border-white/30"
+            >
+              🔊 ทดสอบเสียงพูด
+            </button>
+
+            <button 
+              onClick={() => {
+                setAudioEnabled(true);
+                playProxyTTS("ระบบพร้อมใช้งานค่ะ", 'th').catch(() => {});
+              }}
+              className="w-full bg-gradient-to-r from-green-500 to-emerald-400 hover:from-green-400 hover:to-emerald-300 text-green-900 text-2xl font-black py-5 rounded-xl transition-all shadow-lg active:scale-95"
+            >
+              ▶️ เปิดหน้าจอคิว
+            </button>
+          </div>
         </div>
-        <h1 className="text-5xl font-black tracking-wide drop-shadow-md mb-4 text-center">แตะที่หน้าจอเพื่อเริ่มระบบคิว</h1>
-        <p className="text-xl text-emerald-200">เบราว์เซอร์ต้องการการอนุญาตเพื่อเปิดใช้งานระบบเสียงประกาศ (TTS)</p>
       </div>
     );
   }

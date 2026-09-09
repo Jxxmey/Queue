@@ -39,111 +39,184 @@ def generate_barcode(data: str, filename: str):
 
 def execute_cut(hDC):
     try:
-        CUT_COMMAND = b'\x1d\x56\x42\x00' 
+        CUT_COMMAND = b'\x1d\x56\x00' 
         hDC.Escape(19, CUT_COMMAND) 
     except Exception as e:
         print(f"Cannot cut: {e}")
 
-# ฟังก์ชันพิมพ์
+# ==========================================
+# 🟢 ฟังก์ชันพิมพ์ 2 รอบ (ลูกค้า + ร้านค้า)
+# ==========================================
 def print_receipt(job: PrintJob, printer_name: str, frontend_url: str):
+    time_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+    service_text = "ซื้อหน้าร้าน (Walk-in)" if job.service_type == "walkin" else "รับสินค้าจอง (Pre-order)"
+    
+    # ----------------------------------------
+    # Document 1: ส่วนของลูกค้า
+    # ----------------------------------------
     try:
-        hDC = win32ui.CreateDC()
-        hDC.CreatePrinterDC(printer_name)
-        
-        hDC.StartDoc("Studio7_Queue_Ticket")
-        hDC.StartPage()
+        hDC1 = win32ui.CreateDC()
+        hDC1.CreatePrinterDC(printer_name)
+        hDC1.StartDoc("Studio7_Customer_Ticket")
+        hDC1.StartPage()
         
         font_large = win32ui.CreateFont({"name": "Tahoma", "height": 80, "weight": 700})
         font_medium = win32ui.CreateFont({"name": "Tahoma", "height": 40, "weight": 700})
         font_normal = win32ui.CreateFont({"name": "Tahoma", "height": 28, "weight": 400})
         font_small = win32ui.CreateFont({"name": "Tahoma", "height": 22, "weight": 400})
-
+        font_xsmall = win32ui.CreateFont({"name": "Tahoma", "height": 18, "weight": 400})
+        
+        center_x = 280
         current_y = 20
-        center_x = 280 
-
-        def draw_text_center(text, font, y_offset):
-            hDC.SelectObject(font)
-            size = hDC.GetTextExtent(text)
+        
+        def draw_text_center1(text, font, y_offset):
+            hDC1.SelectObject(font)
+            size = hDC1.GetTextExtent(text)
             x_offset = center_x - (size[0] // 2)
-            hDC.TextOut(x_offset, y_offset, text)
+            hDC1.TextOut(x_offset, y_offset, text)
             return y_offset + size[1] + 10
 
-        def draw_text_left(text, font, y_offset, x_offset=20):
-            hDC.SelectObject(font)
-            size = hDC.GetTextExtent(text)
-            hDC.TextOut(x_offset, y_offset, text)
-            return y_offset + size[1] + 5
-
-        def draw_image_center(image_path, y_offset, target_width=200):
+        def draw_image_center1(image_path, y_offset, target_width=200):
             try:
                 img = Image.open(image_path)
                 ratio = target_width / float(img.size[0])
                 target_height = int((float(img.size[1]) * float(ratio)))
                 img = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+                
+                if img.mode in ('RGBA', 'LA'):
+                    background = Image.new(img.mode[:-1], img.size, (255, 255, 255))
+                    background.paste(img, img.split()[-1])
+                    img = background
+                
                 dib = ImageWin.Dib(img)
                 x_offset = center_x - (target_width // 2)
-                dib.draw(hDC.GetHandleOutput(), (x_offset, y_offset, x_offset + target_width, y_offset + target_height))
+                dib.draw(hDC1.GetHandleOutput(), (x_offset, y_offset, x_offset + target_width, y_offset + target_height))
                 return y_offset + target_height + 20
             except Exception as e:
                 return y_offset
 
-        time_str = datetime.now().strftime("%d/%m/%Y %H:%M")
-        service_text = "ซื้อหน้าร้าน (Walk-in)" if job.service_type == "walkin" else "รับสินค้าจอง (Pre-order)"
+        # เริ่มพิมพ์โลโก้
+        logo_path = "logo.png"
+        if os.path.exists(logo_path):
+            current_y = draw_image_center1(logo_path, current_y, target_width=220)
+        else:
+            current_y = draw_text_center1("STUDIO 7", font_medium, current_y)
 
-        # 1. ลูกค้า
-        current_y = draw_text_center("STUDIO 7", font_medium, current_y)
-        current_y = draw_text_center("บัตรคิวรับบริการ", font_normal, current_y)
-        current_y += 10
-        current_y = draw_text_center(job.queue_number, font_large, current_y)
-        current_y = draw_text_center(f"ประเภท: {service_text}", font_normal, current_y)
+        # 🟢 เพิ่มข้อความ ส่วนสำหรับลูกค้า
+        current_y = draw_text_center1("** ส่วนสำหรับลูกค้า **", font_normal, current_y)
+        current_y = draw_text_center1("บัตรคิวรับบริการ", font_normal, current_y)
+        current_y += 5
+        current_y = draw_text_center1(job.queue_number, font_large, current_y)
+        current_y = draw_text_center1(f"ประเภท: {service_text}", font_normal, current_y)
         current_y += 10
 
-        check_url = f"{frontend_url.strip('/')}/queue/{job.queue_number}"
+        check_url = f"{frontend_url.strip('/')}/{job.queue_number}"
         qr_file = generate_qrcode(check_url, "temp_qr.png")
-        current_y = draw_image_center(qr_file, current_y, target_width=180)
-        current_y = draw_text_center("สแกนเพื่อดูสถานะคิว", font_small, current_y)
-        current_y += 20
-        current_y = draw_text_center(f"คิวก่อนหน้า: {job.queues_ahead} คิว", font_medium, current_y)
-        current_y = draw_text_center(f"เวลาออกบัตร: {time_str}", font_small, current_y)
+        current_y = draw_image_center1(qr_file, current_y, target_width=180)
+        current_y = draw_text_center1("สแกนเพื่อดูสถานะคิว", font_small, current_y)
+        current_y += 15
         
-        current_y += 120 
-        execute_cut(hDC)
-        current_y += 20
+        # แสดงจำนวนคิวก่อนหน้าตามจริง
+        current_y = draw_text_center1(f"คิวก่อนหน้า: {job.queues_ahead} คิว", font_medium, current_y)
+        current_y = draw_text_center1(f"เวลาออกบัตร: {time_str}", font_small, current_y)
+        current_y += 5
+        
+        # 🟢 เพิ่มเงื่อนไขการเรียกคิว
+        current_y = draw_text_center1("(หากเรียกแล้วไม่มา ขออนุญาตข้ามคิว)", font_xsmall, current_y)
+        
+        # ฟีดกระดาษและสั่งตัด
+        current_y += 80
+        execute_cut(hDC1)
+        
+        hDC1.EndPage()
+        hDC1.EndDoc()
+        hDC1.DeleteDC()
+    except Exception as e:
+        print(f"Customer Print Error: {e}")
+        return False
 
-        # 2. พนักงาน
-        current_y = draw_text_center("** ส่วนสำหรับพนักงาน **", font_normal, current_y)
+    time.sleep(2)
+
+    # ----------------------------------------
+    # Document 2: ส่วนของพนักงาน
+    # ----------------------------------------
+    try:
+        hDC2 = win32ui.CreateDC()
+        hDC2.CreatePrinterDC(printer_name)
+        hDC2.StartDoc("Studio7_Store_Ticket")
+        hDC2.StartPage()
+        
+        font_medium2 = win32ui.CreateFont({"name": "Tahoma", "height": 40, "weight": 700})
+        font_normal2 = win32ui.CreateFont({"name": "Tahoma", "height": 28, "weight": 400})
+        
+        center_x = 280
+        current_y = 20
+        
+        def draw_text_center2(text, font, y_offset):
+            hDC2.SelectObject(font)
+            size = hDC2.GetTextExtent(text)
+            x_offset = center_x - (size[0] // 2)
+            hDC2.TextOut(x_offset, y_offset, text)
+            return y_offset + size[1] + 10
+
+        def draw_text_left2(text, font, y_offset, x_offset=20):
+            hDC2.SelectObject(font)
+            size = hDC2.GetTextExtent(text)
+            hDC2.TextOut(x_offset, y_offset, text)
+            return y_offset + size[1] + 5
+
+        def draw_image_center2(image_path, y_offset, target_width=200):
+            try:
+                img = Image.open(image_path)
+                ratio = target_width / float(img.size[0])
+                target_height = int((float(img.size[1]) * float(ratio)))
+                img = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+                
+                if img.mode in ('RGBA', 'LA'):
+                    background = Image.new(img.mode[:-1], img.size, (255, 255, 255))
+                    background.paste(img, img.split()[-1])
+                    img = background
+                
+                dib = ImageWin.Dib(img)
+                x_offset = center_x - (target_width // 2)
+                dib.draw(hDC2.GetHandleOutput(), (x_offset, y_offset, x_offset + target_width, y_offset + target_height))
+                return y_offset + target_height + 20
+            except Exception as e:
+                return y_offset
+
+        current_y = draw_text_center2("** ส่วนสำหรับพนักงาน **", font_normal2, current_y)
         current_y += 10
-        current_y = draw_text_left(f"คิว: {job.queue_number}", font_medium, current_y)
-        current_y = draw_text_left(f"พนักงาน: {job.officer_name}", font_normal, current_y)
-        current_y = draw_text_left(f"บริการ: {service_text}", font_normal, current_y)
+        current_y = draw_text_left2(f"คิว: {job.queue_number}", font_medium2, current_y)
+        current_y = draw_text_left2(f"พนักงาน: {job.officer_name}", font_normal2, current_y)
+        current_y = draw_text_left2(f"บริการ: {service_text}", font_normal2, current_y)
         
         if job.customer_phone:
             current_y += 10
-            current_y = draw_text_left(f"เบอร์ลูกค้า: {job.customer_phone}", font_normal, current_y)
+            current_y = draw_text_left2(f"เบอร์ลูกค้า: {job.customer_phone}", font_normal2, current_y)
             phone_bc = generate_barcode(job.customer_phone, "temp_phone_bc.png")
-            current_y = draw_image_center(phone_bc, current_y, target_width=350)
+            current_y = draw_image_center2(phone_bc, current_y, target_width=350)
         
         if job.service_type == "preorder" and job.booking_number:
             current_y += 10
-            current_y = draw_text_left(f"เลขที่จอง: {job.booking_number}", font_normal, current_y)
-            clean_booking = job.booking_number.replace("/", "-") 
-            book_bc = generate_barcode(clean_booking, "temp_book_bc.png")
-            current_y = draw_image_center(book_bc, current_y, target_width=400)
+            current_y = draw_text_left2(f"เลขที่จอง: {job.booking_number}", font_normal2, current_y)
+            book_bc = generate_barcode(job.booking_number, "temp_book_bc.png")
+            current_y = draw_image_center2(book_bc, current_y, target_width=400)
 
-        current_y += 120
-        execute_cut(hDC)
+        # ฟีดกระดาษและสั่งตัดส่วนจบ
+        current_y += 100
+        execute_cut(hDC2)
 
-        hDC.EndPage()
-        hDC.EndDoc()
-        hDC.DeleteDC()
-
-        for f in ["temp_qr.png", "temp_phone_bc.png", "temp_book_bc.png"]:
-            if os.path.exists(f): os.remove(f)
-                
-        return True
+        hDC2.EndPage()
+        hDC2.EndDoc()
+        hDC2.DeleteDC()
     except Exception as e:
-        print(f"Windows Printing Error: {e}")
+        print(f"Store Print Error: {e}")
         return False
+
+    for f in ["temp_qr.png", "temp_phone_bc.png", "temp_book_bc.png"]:
+        if os.path.exists(f): os.remove(f)
+            
+    return True
 
 
 # ==========================================
@@ -177,13 +250,11 @@ class PrintAgentApp:
         frame_mid = tk.Frame(self.root, padx=30, pady=10)
         frame_mid.pack(fill=tk.BOTH, expand=True)
 
-        # 🟢 ช่องใส่โดเมน Backend (API)
         tk.Label(frame_mid, text="URL เซิร์ฟเวอร์ API (Backend):").pack(anchor=tk.W, pady=(0, 2))
         self.api_var = tk.StringVar(value="https://queue-4c2l.onrender.com")
         self.entry_api = ttk.Entry(frame_mid, textvariable=self.api_var, width=55)
         self.entry_api.pack(anchor=tk.W, pady=(0, 10))
 
-        # 🟢 ช่องใส่โดเมน Frontend (สำหรับ QR Code)
         tk.Label(frame_mid, text="URL สำหรับเช็คคิว (Frontend):").pack(anchor=tk.W, pady=(0, 2))
         self.url_var = tk.StringVar(value="https://queue-4c2l.onrender.com")
         self.entry_url = ttk.Entry(frame_mid, textvariable=self.url_var, width=55)
@@ -225,7 +296,6 @@ class PrintAgentApp:
             self.entry_api.config(state="disabled")
             self.entry_url.config(state="disabled")
             
-            # เริ่ม Thread สำหรับดึงข้อมูลอัตโนมัติ
             self.polling_thread = threading.Thread(target=self.poll_from_server, daemon=True)
             self.polling_thread.start()
 
@@ -241,47 +311,60 @@ class PrintAgentApp:
             try:
                 self.update_log(f"กำลังเช็คคิวใหม่... ({datetime.now().strftime('%H:%M:%S')})")
                 
-                # 1. ยิงไปถามเซิร์ฟเวอร์ว่ามีคิวไหนยังไม่ได้ปริ้นไหม
+                # 🟢 ดึงข้อมูลคิวที่ยังไม่ได้ปริ้น
                 res = requests.get(f"{api_base}/api/queue/unprinted", timeout=10)
                 if res.status_code == 200:
                     queues = res.json()
                     
+                    # 🟢 ดึงรายการคิวที่กำลังรอทั้งหมดมาคำนวณจำนวนคิวก่อนหน้าตามจริง
+                    active_res = requests.get(f"{api_base}/api/queue/active", timeout=10)
+                    active_queues = active_res.json() if active_res.status_code == 200 else []
+                    
                     for q in queues:
                         if not self.is_running: break
                         
+                        # คำนวณหาตำแหน่ง index ของคิวนี้ในคิวที่กำลังรอ
+                        queue_num = q['queue_number']
+                        my_index = next((i for i, item in enumerate(active_queues) if item['queue_number'] == queue_num), 0)
+                        
                         job = PrintJob(
                             id=q['id'],
-                            queue_number=q['queue_number'],
+                            queue_number=queue_num,
                             service_type=q['service_type'],
                             booking_number=q.get('booking_number'),
                             customer_phone=q.get('customer_phone'),
-                            queues_ahead=q.get('queues_ahead', 0)
+                            queues_ahead=my_index # ใช้ตำแหน่ง index เป็นจำนวนคิวก่อนหน้าตามจริง
                         )
                         
-                        # 2. ถ้ามี ก็สั่งเครื่องพิมพ์ปริ้น
                         self.update_log(f"กำลังปริ้นคิว {job.queue_number}...")
                         success = print_receipt(job, printer_name, frontend_url)
                         
-                        # 3. ถ้าปริ้นสำเร็จ ยิงไปบอก Backend ให้มาร์คว่าปริ้นแล้ว
                         if success:
                             requests.patch(f"{api_base}/api/queue/{job.id}/printed", timeout=5)
                             self.update_log(f"ปริ้นคิว {job.queue_number} สำเร็จ!")
                         
-                        time.sleep(1) # หน่วงเวลาพักเครื่องพิมพ์นิดหน่อยระหว่างคิว
+                        time.sleep(1) 
                 
             except requests.exceptions.RequestException as e:
                 self.update_log(f"เชื่อมต่อเซิร์ฟเวอร์ไม่ได้: กำลังลองใหม่...")
             except Exception as e:
                 self.update_log(f"เกิดข้อผิดพลาดภายใน: {e}")
             
-            # รอ 3 วินาทีก่อนเช็คใหม่
             time.sleep(3)
 
     def test_print(self):
         printer = self.printer_var.get()
         f_url = self.url_var.get()
         if not printer: return
-        test_job = PrintJob(id="test", queue_number="TEST-001", service_type="preorder", booking_number="BK-9999", customer_phone="0812345678")
+        
+        test_job = PrintJob(
+            id="test", 
+            queue_number="TEST-001", 
+            service_type="preorder", 
+            booking_number="F18/PRESTU26099999", 
+            customer_phone="0812345678",
+            queues_ahead=3 # ทดสอบจำลองว่ามีคิวก่อนหน้า 3 คิว
+        )
         print_receipt(test_job, printer, f_url)
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
-import { FaUsers, FaClock, FaCheckCircle, FaSearch } from "react-icons/fa";
+import { FaUsers, FaCheckCircle, FaSearch } from "react-icons/fa";
 
 export default function Home() {
   const { queueNumber } = useParams(); 
@@ -69,10 +69,8 @@ export default function Home() {
   }
 
   return (
-    /* 🟢 พื้นหลังไล่สี (Background Gradient) */
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-green-50 to-emerald-100 flex flex-col font-sans">
       
-      {/* 🟢 Header ไล่สี (Header Gradient) */}
       <header className="bg-gradient-to-r from-green-700 via-green-600 to-emerald-500 text-white p-4 shadow-lg">
         <div className="max-w-md mx-auto flex items-center justify-center gap-3">
           <img src="/assets/logo.png" alt="Studio 7 Logo" className="h-10 w-auto object-contain bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-xl shadow-sm" />
@@ -124,7 +122,6 @@ export default function Home() {
             </div>
             
             <div className="p-8 text-center relative overflow-hidden">
-              {/* ตกแต่งแสงเบลอๆ ด้านหลัง */}
               <div className="absolute top-[-50px] left-[-50px] w-32 h-32 bg-green-400/10 rounded-full blur-3xl"></div>
               <div className="absolute bottom-[-50px] right-[-50px] w-32 h-32 bg-emerald-400/10 rounded-full blur-3xl"></div>
 
@@ -140,13 +137,13 @@ export default function Home() {
                 </div>
               ) : (
                 <div className="animate-fade-in-up relative z-10">
-                  {/* 🟢 ตัวอักษรไล่สี (Text Gradient) */}
                   <div className="text-[5.5rem] font-black text-transparent bg-clip-text bg-gradient-to-br from-green-600 via-emerald-500 to-teal-400 mb-8 drop-shadow-sm tracking-tighter leading-none py-2">
                     {myQueue.queue_number}
                   </div>
                   
-                  <div className="flex justify-center gap-6 bg-white/60 backdrop-blur-md rounded-3xl p-6 border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-                    <div className="text-center w-1/2">
+                  {/* 🟢 นำเวลาออก และจัดกล่องคิวก่อนหน้าให้อยู่ตรงกลาง */}
+                  <div className="flex justify-center bg-white/60 backdrop-blur-md rounded-3xl p-6 border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+                    <div className="text-center w-full">
                       <p className="text-xs text-gray-500 flex items-center gap-1.5 justify-center mb-2 font-bold uppercase tracking-wider">
                         <FaUsers className="text-emerald-500 text-lg" /> คิวก่อนหน้า
                       </p>
@@ -154,18 +151,8 @@ export default function Home() {
                         {getQueuesAhead()} <span className="text-sm font-bold text-gray-400">คิว</span>
                       </p>
                     </div>
-                    
-                    <div className="w-px bg-gradient-to-b from-transparent via-gray-200 to-transparent"></div>
-                    
-                    <div className="text-center w-1/2">
-                      <p className="text-xs text-gray-500 flex items-center gap-1.5 justify-center mb-2 font-bold uppercase tracking-wider">
-                        <FaClock className="text-emerald-500 text-lg" /> รอประมาณ
-                      </p>
-                      <p className="text-4xl font-black text-gray-800">
-                        {getQueuesAhead() * 3} <span className="text-sm font-bold text-gray-400">นาที</span>
-                      </p>
-                    </div>
                   </div>
+
                 </div>
               )}
             </div>
@@ -193,7 +180,6 @@ export default function Home() {
                   key={q.id}
                   className={`py-3.5 text-center rounded-2xl font-black text-lg transition-all duration-300
                     ${queueNumber && myQueue?.queue_number === q.queue_number 
-                      /* 🟢 ปุ่มคิวที่ถูกไฮไลต์ (Gradient Highlight) */
                       ? "bg-gradient-to-br from-green-500 to-emerald-500 text-white shadow-lg shadow-green-500/30 transform scale-105 border-none ring-2 ring-white ring-offset-2 ring-offset-green-50" 
                       : "bg-white text-gray-600 border border-gray-200 shadow-sm hover:shadow-md hover:border-emerald-300"
                     }`}
