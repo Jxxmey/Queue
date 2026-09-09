@@ -5,6 +5,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/officer", tags=["Officer"])
+officer_collection = get_collection("officers")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CSV_FILE_PATH = os.path.join(BASE_DIR, 'officer.csv')
@@ -90,3 +91,23 @@ async def get_officer_by_id(officer_id: str):
             return emp
             
     raise HTTPException(status_code=404, detail="ไม่พบข้อมูลพนักงานรหัสนี้")
+
+@router.post("/sync-from-sheet")
+async def sync_officers_from_sheet(request: Request):
+    try:
+        # รับข้อมูล JSON ที่ส่งมาจาก Google Sheet
+        data = await request.json()
+        officers_list = data.get("officers", [])
+        
+        if not officers_list:
+            return {"status": "error", "message": "ไม่พบข้อมูลพนักงาน"}
+
+        # 🟢 ล้างข้อมูลเก่าทั้งหมดใน MongoDB (เพื่อเตรียมรับข้อมูลชุดใหม่จาก Sheet)
+        await officer_collection.delete_many({})
+        
+        # 🟢 เพิ่มข้อมูลใหม่ทั้งหมดเข้าไปทีเดียว
+        await officer_collection.insert_many(officers_list)
+        
+        return {"status": "success", "message": f"ซิงค์ข้อมูลพนักงานสำเร็จ {len(officers_list)} คน"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
