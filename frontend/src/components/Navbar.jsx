@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { FaDesktop, FaPrint, FaTv, FaUserCircle, FaSignOutAlt, FaCog, FaStore } from "react-icons/fa";
+import { FaDesktop, FaPrint, FaTv, FaUserCircle, FaSignOutAlt, FaCog, FaStore, FaUsers } from "react-icons/fa"; // 🟢 Import FaUsers เพิ่ม
 
 export default function Navbar() {
   const [officer, setOfficer] = useState(null);
@@ -35,13 +35,16 @@ export default function Navbar() {
 
   if (!officer) return null;
 
-  // 🟢 ตรวจสอบสิทธิ์ตำแหน่ง (อ้างอิงจากคอลัมน์ Position)
+  // 🟢 ตรวจสอบสิทธิ์ตำแหน่ง (อ้างอิงจากคอลัมน์ Position) สำหรับดูหน้าจัดการคิว
   const allowedRoles = ["cashier", "Branch Sales Manager", "Assistant Branch Sales Manager"];
   const officerRole = officer.position || officer.Position || "";
   
   const canAccessAdmin = allowedRoles.some(role => 
     officerRole.toLowerCase().includes(role.toLowerCase())
   );
+
+  // 🟢 ตรวจสอบสิทธิ์การจัดการพนักงาน (เฉพาะ ID 32032 เท่านั้น)
+  const canManageOfficers = officer.id === "32032";
 
   // 🟢 อ้างอิงสาขาจากข้อมูลหลังบ้านโดยตรง (ใช้ key ตัวเล็กตามที่ Python ส่งมา)
   const branchId = officer.branch_id || officer["Branch (ID)"] || "Main";
@@ -54,9 +57,10 @@ export default function Navbar() {
   const navLinks = [
     { path: "/sale", name: "ออกคิว", icon: <FaPrint className="text-xl mb-1" /> },
     { path: "/cashier", name: "เรียกคิว", icon: <FaDesktop className="text-xl mb-1" /> },
-    // 🟢 ส่ง Branch ID และ Branch Name ไปให้หน้า TV Display
     { path: `/tv?branch_id=${branchId}&branch_name=${encodeURIComponent(branchName)}`, name: "หน้าจอทีวี", icon: <FaTv className="text-xl mb-1" />, target: "_blank" },
-    ...(canAccessAdmin ? [{ path: "/admin", name: "จัดการคิว", icon: <FaCog className="text-xl mb-1" /> }] : [])
+    ...(canAccessAdmin ? [{ path: "/admin", name: "จัดการคิว", icon: <FaCog className="text-xl mb-1" /> }] : []),
+    // 🟢 เพิ่มหน้าจัดการพนักงาน โดยเช็คสิทธิ์ canManageOfficers
+    ...(canManageOfficers ? [{ path: "/manage-officers", name: "จัดการพนักงาน", icon: <FaUsers className="text-xl mb-1" /> }] : []) 
   ];
 
   return (
@@ -70,7 +74,6 @@ export default function Navbar() {
               <img src="/assets/logo.png" alt="Studio 7 Logo" className="h-9 w-auto object-contain bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg shadow-sm" />
               <span className="font-extrabold text-xl tracking-wider hidden sm:block">Queue System</span>
               
-              {/* 🟢 แสดงชื่อสาขาบน Navbar */}
               <div className="hidden sm:block border-l border-green-400 h-6 mx-2"></div>
               <div className="hidden sm:flex items-center gap-1.5 bg-green-800/30 px-3 py-1 rounded-full text-sm font-bold border border-green-500/50 shadow-inner">
                 <FaStore className="text-emerald-200" />
@@ -109,7 +112,6 @@ export default function Navbar() {
                   <div className="px-5 py-4 bg-gradient-to-br from-gray-50 to-gray-100 border-b border-gray-100">
                     <p className="text-sm font-extrabold text-gray-800">{officerFirstName} {officerLastName}</p>
                     <p className="text-xs text-gray-500 mt-1 font-medium">ตำแหน่ง: <span className="text-green-600">{officerRole || "พนักงาน"}</span></p>
-                    {/* 🟢 แสดงชื่อสาขาใน Dropdown เผื่อดูบนมือถือ */}
                     <p className="text-xs text-emerald-600 mt-2 font-bold flex items-center gap-1">
                       <FaStore /> {branchName}
                     </p>

@@ -1,18 +1,14 @@
-import csv
+import json
 import os
-from fastapi import APIRouter, HTTPException
+import urllib.request
+from fastapi import APIRouter, HTTPException, Request
 from typing import List, Optional
 from pydantic import BaseModel
-from fastapi import APIRouter, Request
 from database import get_collection
 
 router = APIRouter(prefix="/api/officer", tags=["Officer"])
 officer_collection = get_collection("officers")
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CSV_FILE_PATH = os.path.join(BASE_DIR, 'officer.csv')
-
-# 🟢 1. เพิ่มฟิลด์ branch_id เข้าไปใน Schema สำหรับตอบกลับ
 class OfficerResponse(BaseModel):
     id: str
     title: str
@@ -24,49 +20,28 @@ class OfficerResponse(BaseModel):
     branch_name: str
     counter: str
 
-def load_officers_from_csv():
+def load_officers_from_sheet():
     officers = []
-    encodings = ['utf-8-sig', 'utf-8', 'cp874', 'tis-620']
-    file_loaded = False
+    # 🟢 ดึง URL มาจากไฟล์ .env โดยตรง
+    google_sheet_url = os.getenv("GOOGLE_SHEET_API_URL")
     
-    for enc in encodings:
-        try:
-            with open(CSV_FILE_PATH, mode='r', encoding=enc) as file:
-                reader = csv.DictReader(file)
-                for row in reader:
-                    # 🟢 ล้างคอมมาออกจาก ID เช่น "28,682" -> "28682"
-                    raw_id = str(row.get("ID", "")).strip()
-                    clean_id = raw_id.replace(",", "")
-
-                    if clean_id:  # ตรวจสอบว่าไม่ใช้แถวว่าง
-                        officers.append({
-                            "id": clean_id,
-                            "title": str(row.get("Title", "")).strip(),
-                            "name": str(row.get("Name", "")).strip(),
-                            "surname": str(row.get("Surname", "")).strip(),
-                            "department_name": str(row.get("Department Name", "")).strip(),
-                            "position": str(row.get("Position", "")).strip(),
-                            "branch_id": str(row.get("Branch (ID)", "")).strip(),
-                            "branch_name": str(row.get("Branch Name", "")).strip(),
-                            "counter": str(row.get("Counter", "")).strip()
-                        })
-            
-            print(f"✅ โหลดข้อมูลพนักงานสำเร็จจำนวน: {len(officers)} คน (ใช้ Encoding: {enc})")
-            file_loaded = True
-            break  # 🟢 ถ้าอ่านไฟล์สำเร็จ ให้หลุดออกจากลูปเช็ค Encoding เลย
-
-        except UnicodeDecodeError:
-            continue  # 🟢 ถ้าอ่านแล้วติดขัดภาษาแปลกๆ ให้ลอง Encoding ตัวถัดไป
-        except Exception as e:
-            print(f"❌ Error reading CSV with {enc}: {e}")
-            break
-
-    if not file_loaded:
-        print(f"❌ Error: ไม่สามารถอ่านไฟล์ {CSV_FILE_PATH} ได้ กรุณาตรวจสอบไฟล์")
-    
+    if not google_sheet_url:
+        print("⚠️ Warning: ไม่พบตัวแปร GOOGLE_SHEET_API_URL ในไฟล์ .env")
+        return officers
+        
+    try:
+        print("🔄 กำลังดึงข้อมูลพนักงานจาก Google Sheets (JSON)...")
+        req = urllib.request.Request(google_sheet_url)
+        with urllib.request.urlopen(req) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            officers = data
+        print(f"✅ โหลดข้อมูลพนักงานสำเร็จจำนวน: {len(officers)} คน")
+    except Exception as e:
+        print(f"❌ Error fetching from Google Sheets: {e}")
+        
     return officers
 
-OFFICERS_DB = load_officers_from_csv()
+OFFICERS_DB = load_officers_from_sheet()
 
 @router.get("/", response_model=List[OfficerResponse])
 async def get_officers(
@@ -82,7 +57,7 @@ async def get_officers(
         ]
         
     if counter:
-        result = [emp for emp in result if emp["counter"] == counter]
+        result = [emp for emp in result if emp.get("counter") == counter]
         
     return result
 
@@ -94,20 +69,32 @@ async def get_officer_by_id(officer_id: str):
             
     raise HTTPException(status_code=404, detail="ไม่พบข้อมูลพนักงานรหัสนี้")
 
+@router.post("/sync")
+async def sync_officers():
+    global OFFICERS_DB
+    new_data = load_officers_from_sheet()
+    if new_data:
+        OFFICERS_DB = new_data
+        
+        await officer_collection.delete_many({})
+        await officer_collection.insert_many(new_data)
+        
+        return {"status": "success", "message": f"ซิงค์ข้อมูลล่าสุดสำเร็จ จำนวน {len(OFFICERS_DB)} คน"}
+    else:
+        raise HTTPException(status_code=500, detail="ไม่สามารถดึงข้อมูลจาก Google Sheet ได้")
+
 @router.post("/sync-from-sheet")
 async def sync_officers_from_sheet(request: Request):
+    global OFFICERS_DB
     try:
-        # รับข้อมูล JSON ที่ส่งมาจาก Google Sheet
         data = await request.json()
         officers_list = data.get("officers", [])
         
         if not officers_list:
             return {"status": "error", "message": "ไม่พบข้อมูลพนักงาน"}
 
-        # 🟢 ล้างข้อมูลเก่าทั้งหมดใน MongoDB (เพื่อเตรียมรับข้อมูลชุดใหม่จาก Sheet)
+        OFFICERS_DB = officers_list
         await officer_collection.delete_many({})
-        
-        # 🟢 เพิ่มข้อมูลใหม่ทั้งหมดเข้าไปทีเดียว
         await officer_collection.insert_many(officers_list)
         
         return {"status": "success", "message": f"ซิงค์ข้อมูลพนักงานสำเร็จ {len(officers_list)} คน"}
