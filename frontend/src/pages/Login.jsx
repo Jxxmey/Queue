@@ -23,10 +23,24 @@ export default function Login() {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
 
+      const officerData = response.data.officer;
       localStorage.setItem("token", response.data.access_token);
-      localStorage.setItem("officer", JSON.stringify(response.data.officer));
+      localStorage.setItem("officer", JSON.stringify(officerData));
 
-      navigate("/sale"); 
+      // 🟢 ดึงรหัสสาขาออกมาตรวจสอบให้ครอบคลุมชื่อฟิลด์ที่เป็นไปได้
+      const branchId = String(
+        officerData.branch_id || 
+        officerData["Branch (ID)"] || 
+        officerData.branch || 
+        ""
+      ).trim();
+
+      // 🟢 ตรวจสอบว่าพนักงานอยู่สาขา 55 (ส่วนกลาง) หรือไม่
+      if (branchId === "55") {
+        navigate("/select-branch"); // พาไปหน้าเลือกสาขา
+      } else {
+        navigate("/sale"); // สาขาปกติให้ไปหน้าออกคิว
+      }
       
     } catch (err) {
       setError(err.response?.data?.detail || "เกิดข้อผิดพลาดในการเข้าสู่ระบบ");
