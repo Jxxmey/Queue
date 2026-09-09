@@ -23,3 +23,6 @@ class QueueResponse(BaseModel):
     created_at: datetime
     called_at: Optional[datetime] = None
     waiting_ahead: int = 0
+
+class QueueStatusUpdate(BaseModel):
+    status: str

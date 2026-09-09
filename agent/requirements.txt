@@ -1,0 +1,7 @@
+fastapi>=0.111.0
+uvicorn>=0.30.1
+pydantic>=2.7.4
+pywin32>=306
+Pillow>=10.3.0
+qrcode>=7.4.2
+python-barcode>=0.15.1

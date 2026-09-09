@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { FaDesktop, FaPrint, FaTv, FaUserCircle, FaSignOutAlt } from "react-icons/fa";
+import { FaDesktop, FaPrint, FaTv, FaUserCircle, FaSignOutAlt, FaCog } from "react-icons/fa";
 
 export default function Navbar() {
   const [officer, setOfficer] = useState(null);
@@ -35,27 +35,35 @@ export default function Navbar() {
 
   if (!officer) return null;
 
+  // 🟢 ตรวจสอบสิทธิ์ตำแหน่งสำหรับเมนู Admin (cashier, Branch Sales Manager, Assistant Branch Sales Manager)
+  const allowedRoles = ["cashier", "Branch Sales Manager", "Assistant Branch Sales Manager"];
+  const officerRole = officer.role || officer.position || officer.title || "";
+  
+  const canAccessAdmin = allowedRoles.some(role => 
+    officerRole.toLowerCase().includes(role.toLowerCase())
+  );
+
   const navLinks = [
     { path: "/cashier", name: "เรียกคิว", icon: <FaDesktop className="text-xl mb-1" /> },
     { path: "/sale", name: "ออกคิว", icon: <FaPrint className="text-xl mb-1" /> },
-    { path: "/display", name: "หน้าจอทีวี", icon: <FaTv className="text-xl mb-1" />, target: "_blank" }
+    { path: "/display", name: "หน้าจอทีวี", icon: <FaTv className="text-xl mb-1" />, target: "_blank" },
+    // แสดงเมนูจัดการคิวเฉพาะตำแหน่งที่กำหนด
+    ...(canAccessAdmin ? [{ path: "/admin", name: "จัดการคิว", icon: <FaCog className="text-xl mb-1" /> }] : [])
   ];
 
   return (
     <>
-      {/* 🟢 Top App Bar (แถบด้านบน) */}
+      {/* Top App Bar */}
       <nav className="bg-gradient-to-r from-green-700 via-green-600 to-emerald-500 text-white shadow-md sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             
-            {/* โลโก้แบรนด์ */}
             <div className="flex items-center gap-3">
               <img src="/assets/logo.png" alt="Studio 7 Logo" className="h-9 w-auto object-contain bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg shadow-sm" />
               <span className="font-extrabold text-xl tracking-wider hidden sm:block">Queue System</span>
             </div>
 
-            {/* เมนูตรงกลาง (แสดงเฉพาะบน Desktop) */}
-            <div className="hidden md:flex items-center gap-6">
+            <div className="hidden md:flex items-center gap-4">
               {navLinks.map((link) => (
                 <Link
                   key={link.path}
@@ -72,7 +80,6 @@ export default function Navbar() {
               ))}
             </div>
 
-            {/* ข้อมูลผู้ใช้ & Logout */}
             <div className="flex items-center relative" ref={dropdownRef}>
               <button
                 onClick={() => setShowDropdown(!showDropdown)}
@@ -82,12 +89,11 @@ export default function Navbar() {
                 <span className="text-sm font-bold hidden sm:block">{officer.name}</span>
               </button>
 
-              {/* Dropdown Logout */}
               {showDropdown && (
                 <div className="absolute right-0 top-14 mt-2 w-56 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white overflow-hidden text-gray-800 animate-fade-in-up z-50">
                   <div className="px-5 py-4 bg-gradient-to-br from-gray-50 to-gray-100 border-b border-gray-100">
                     <p className="text-sm font-extrabold text-gray-800">{officer.name} {officer.surname}</p>
-                    <p className="text-xs text-gray-500 mt-1 font-medium">รหัสพนักงาน: <span className="text-green-600">{officer.id}</span></p>
+                    <p className="text-xs text-gray-500 mt-1 font-medium">ตำแหน่ง: <span className="text-green-600">{officerRole || "พนักงาน"}</span></p>
                   </div>
                   <button
                     onClick={handleLogout}
@@ -102,7 +108,7 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {/* 🟢 Bottom Navigation Bar (แสดงเฉพาะบนมือถือ) */}
+      {/* Bottom Navigation Bar (Mobile) */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-gray-100 shadow-[0_-10px_40px_rgba(0,0,0,0.05)] z-40 pb-safe">
         <div className="flex justify-around items-center h-16 px-2">
           {navLinks.map((link) => (

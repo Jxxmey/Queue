@@ -1,8 +1,11 @@
 from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel
 from datetime import datetime
 from database import get_collection
-from models.schemas import QueueCreate, QueueResponse, QueueCall
+from models.schemas import QueueCreate, QueueResponse, QueueCall, QueueStatusUpdate
 from bson import ObjectId
+from bson.errors import InvalidId
+
 
 router = APIRouter(prefix="/api/queue", tags=["Queue"])
 queue_collection = get_collection("queues")
@@ -29,7 +32,8 @@ async def issue_queue(queue_data: QueueCreate):
         "status": "waiting",
         "counter_number": None,
         "created_at": datetime.utcnow(),
-        "called_at": None
+        "called_at": None,
+        "printed": False # เพิ่มสถานะว่าถูกสั่งปริ้นไปหรือยัง
     }
     
     result = await queue_collection.insert_one(new_queue)
@@ -100,3 +104,63 @@ async def get_recent_called_queues():
         return queues
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ดึงข้อมูลคิวล่าสุดผิดพลาด: {str(e)}")
+
+@router.patch("/{queue_id}/status")
+async def update_queue_status(queue_id: str, status_data: QueueStatusUpdate):
+    try:
+        valid_id = ObjectId(queue_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="รูปแบบ Queue ID ไม่ถูกต้อง")
+
+    # อัปเดตสถานะในฐานข้อมูล
+    result = await queue_collection.find_one_and_update(
+        {"_id": valid_id},
+        {"$set": {"status": status_data.status}},
+        return_document=True
+    )
+
+    if not result:
+        raise HTTPException(status_code=404, detail="ไม่พบคิวที่ต้องการอัปเดต")
+
+    result["id"] = str(result["_id"])
+    result.pop("_id", None)
+    return result
+
+# ==========================================
+# API สำหรับ Print Agent แบบ Remote/Polling
+# ==========================================
+
+# 1. ดึงข้อมูลคิวล่าสุดที่ยังไม่ได้สั่งพิมพ์
+@router.get("/unprinted")
+async def get_unprinted_queues():
+    try:
+        # หาคิวที่สถานะ waiting และยังไม่มีฟิลด์ printed (หรือ printed เป็น false) 
+        cursor = queue_collection.find(
+            {"status": "waiting", "printed": {"$ne": True}}
+        ).sort("created_at", 1) 
+        
+        queues = await cursor.to_list(length=10) # ดึงทีละ 10 คิวเพื่อกันโหลดหนัก
+        
+        for q in queues:
+            q["id"] = str(q["_id"])
+            q.pop("_id", None)
+            
+        return queues
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 2. อัปเดตสถานะว่าคิวนี้ปริ้นสำเร็จแล้ว
+@router.patch("/{queue_id}/printed")
+async def mark_queue_as_printed(queue_id: str):
+    try:
+        valid_id = ObjectId(queue_id)
+        result = await queue_collection.find_one_and_update(
+            {"_id": valid_id},
+            {"$set": {"printed": True}},
+            return_document=True
+        )
+        if not result:
+            raise HTTPException(status_code=404, detail="ไม่พบคิว")
+        return {"status": "success", "message": "Marked as printed"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
