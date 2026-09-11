@@ -1,15 +1,22 @@
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
-import { FaPlayCircle } from "react-icons/fa";
+import { FaPlayCircle, FaBullhorn } from "react-icons/fa";
 
 export default function TvDisplay() {
-  const [waitingQueues, setWaitingQueues] = useState([]);
   const [recentQueues, setRecentQueues] = useState([]);
   const [time, setTime] = useState(new Date());
   
   const [audioEnabled, setAudioEnabled] = useState(false);
   const lastCalledId = useRef(null);
   const [queueToSpeak, setQueueToSpeak] = useState(null);
+
+  // 🟢 1. Playlist คอนเทนต์ (เอาไฟล์ไปใส่ใน public/assets/contents/)
+  const [mediaIndex, setMediaIndex] = useState(0);
+  const playlist = [
+    "01.png",
+    "02.jpg",
+    "03.jpg"
+  ];
 
   const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -27,9 +34,7 @@ export default function TvDisplay() {
     try {
       const branchQuery = `?branch_id=${branch_id}`;
 
-      const activeRes = await axios.get(`${apiUrl}/api/queue/active${branchQuery}`);
-      setWaitingQueues(activeRes.data);
-
+      // ดึงคิวที่เพิ่งถูกเรียกมาแสดงฝั่งซ้าย
       const recentRes = await axios.get(`${apiUrl}/api/queue/recent${branchQuery}`);
       const calledList = recentRes.data;
       setRecentQueues(calledList);
@@ -58,6 +63,33 @@ export default function TvDisplay() {
     return () => clearInterval(interval);
   }, [branch_id]); 
 
+  // =========================================
+  // 🟢 2. ระบบรันคอนเทนต์สื่อโฆษณา (ฝั่งขวา)
+  // =========================================
+  const currentMedia = playlist[mediaIndex];
+  const isVideo = currentMedia?.toLowerCase().endsWith(".mp4");
+
+  useEffect(() => {
+    // ถ้ารูปภาพ ให้เปลี่ยนสไลด์ทุก 10 วินาที
+    if (!isVideo && playlist.length > 0) {
+      const timer = setTimeout(() => {
+        setMediaIndex((prev) => (prev + 1) % playlist.length);
+      }, 10000); // เปลี่ยนเป็น 10000 (10 วินาที)
+      
+      return () => clearTimeout(timer);
+    }
+  }, [mediaIndex, isVideo, playlist.length]);
+
+  const handleVideoEnd = () => {
+    setMediaIndex((prev) => (prev + 1) % playlist.length);
+  };
+
+  const handleMediaError = () => {
+    console.warn(`ข้ามไฟล์ที่ไม่พบ: ${currentMedia}`);
+    setMediaIndex((prev) => (prev + 1) % playlist.length);
+  };
+  // =========================================
+
   const playProxyTTS = (text, lang) => {
     return new Promise((resolve, reject) => {
       const audioUrl = `${apiUrl}/api/tts?text=${encodeURIComponent(text)}&lang=${lang}`;
@@ -82,7 +114,6 @@ export default function TvDisplay() {
     }
   }, [queueToSpeak, audioEnabled]);
 
-  // 🟢 แสดงคิวที่เรียกแล้ว สูงสุด 6 คิว
   const displayedQueues = recentQueues.slice(0, 6);
   const announcementText = "📢 ยินดีต้อนรับสู่ Studio 7 ... โปรดเตรียมหมายเลขคิวของท่านให้พร้อม หากถึงคิวของท่านแล้ว กรุณาติดต่อพนักงานที่เคาน์เตอร์ ... ขอขอบคุณที่ใช้บริการครับ 🙏";
 
@@ -108,7 +139,7 @@ export default function TvDisplay() {
   }
 
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden bg-gray-50 font-sans select-none text-gray-800 box-border">
+    <div className="h-screen w-screen flex flex-col overflow-hidden bg-gray-900 font-sans select-none text-gray-800 box-border">
       
       <style>
         {`
@@ -123,13 +154,21 @@ export default function TvDisplay() {
           }
           ::-webkit-scrollbar { display: none; }
           
-          /* แอนิเมชันสำหรับคิวที่กำลังเรียกให้กระพริบ */
           @keyframes blink-bg {
             0%, 100% { background-color: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.5); }
             50% { background-color: rgba(16, 185, 129, 0.3); border-color: rgba(16, 185, 129, 1); }
           }
           .animate-blink-bg {
             animation: blink-bg 1.5s infinite ease-in-out;
+          }
+          
+          /* 🟢 เปลี่ยนแอนิเมชันมาเป็นแบบ Slide จากขวาไปซ้าย */
+          .animate-slide-in { 
+            animation: slideIn 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards; 
+          }
+          @keyframes slideIn { 
+            from { transform: translateX(100%); opacity: 0; } 
+            to { transform: translateX(0); opacity: 1; } 
           }
         `}
       </style>
@@ -153,16 +192,12 @@ export default function TvDisplay() {
       </header>
 
       {/* Main Layout */}
-      <main className="flex-1 flex min-h-0 p-4 gap-4 bg-gradient-to-br from-gray-50 via-emerald-50/30 to-green-100 relative overflow-hidden box-border">
+      <main className="flex-1 flex min-h-0 bg-black relative overflow-hidden box-border">
         
-        <div className="absolute top-[-10vh] left-[-10vw] w-[40vw] h-[40vw] bg-emerald-400/10 rounded-full blur-[100px] pointer-events-none"></div>
-        <div className="absolute bottom-[-10vh] right-[-10vw] w-[40vw] h-[40vw] bg-green-400/10 rounded-full blur-[100px] pointer-events-none"></div>
-
-        {/* 🟢 ฝั่งซ้าย (65%): ตารางคิวที่กำลังเรียก */}
-        <div className="w-[65%] flex flex-col min-h-0 relative z-10">
-          <div className="flex-1 bg-white/90 backdrop-blur-xl rounded-[2.5rem] border border-white flex flex-col overflow-hidden shadow-2xl relative min-h-0">
+        {/* 🟢 ฝั่งซ้าย (40%): ตารางคิวที่กำลังเรียก */}
+        <div className="w-[40%] flex flex-col min-h-0 relative z-20 shadow-2xl border-r-4 border-gray-800">
+          <div className="flex-1 bg-white flex flex-col overflow-hidden relative min-h-0">
             
-            {/* หัวตาราง */}
             <div className="h-[12vh] bg-gradient-to-r from-gray-800 to-gray-900 flex items-center justify-between px-10 border-b-4 border-emerald-500 shadow-md shrink-0 relative z-10">
               <h2 className="text-[4vh] w-1/2 font-black tracking-widest text-white text-center border-r-2 border-gray-600">
                 หมายเลขคิว<br/><span className="text-[2vh] text-emerald-400">QUEUE NO.</span>
@@ -172,13 +207,10 @@ export default function TvDisplay() {
               </h2>
             </div>
             
-            {/* 🟢 รายการคิว (สูงสุด 6 แถว) */}
-            <div className="flex-1 flex flex-col p-4 gap-3 relative min-h-0 overflow-hidden">
+            <div className="flex-1 flex flex-col p-4 gap-3 relative min-h-0 overflow-hidden bg-gray-50">
               {displayedQueues.length > 0 ? (
                 displayedQueues.map((q, index) => {
-                  // คิวบนสุด (กำลังเรียก) จะให้กระพริบและตัวใหญ่กว่าเล็กน้อย
                   const isNowCalling = index === 0;
-                  
                   return (
                     <div 
                       key={q.called_at} 
@@ -205,7 +237,8 @@ export default function TvDisplay() {
                 })
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center opacity-30">
-                  <div className="text-[8vh] font-black text-gray-400 tracking-widest">
+                  <FaBullhorn className="text-[12vh] text-gray-400 mb-4" />
+                  <div className="text-[6vh] font-black text-gray-400 tracking-widest">
                     ว่างให้บริการ
                   </div>
                 </div>
@@ -214,51 +247,41 @@ export default function TvDisplay() {
           </div>
         </div>
 
-        {/* 🟢 ฝั่งขวา (35%): คิวที่รอ */}
-        <div className="w-[35%] flex flex-col gap-4 min-h-0 relative z-10">
-          
-          <div className="flex-1 bg-white/80 backdrop-blur-md rounded-[2rem] border border-white flex flex-col overflow-hidden shadow-xl min-h-0">
-            <div className="h-[12vh] bg-gradient-to-r from-gray-800 to-gray-700 flex items-center justify-center border-b-4 border-emerald-500 shrink-0">
-              <h2 className="text-[3.5vh] font-black text-white tracking-widest flex items-center gap-3">
-                คิวที่รอ (WAITING)
-                <span className="relative flex h-4 w-4">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500"></span>
-                </span>
-              </h2>
+        {/* 🟢 ฝั่งขวา (60%): จอโฆษณา Digital Signage */}
+        <div className="w-[60%] flex items-center justify-center bg-black relative min-h-0 overflow-hidden">
+          {playlist.length > 0 ? (
+            isVideo ? (
+              <video
+                key={currentMedia}
+                src={`/assets/contents/${currentMedia}`}
+                autoPlay
+                muted
+                className="w-full h-full object-contain animate-slide-in"
+                onEnded={handleVideoEnd}
+                onError={handleMediaError}
+              />
+            ) : (
+              <img
+                key={currentMedia}
+                src={`/assets/contents/${currentMedia}`}
+                alt="Signage"
+                // 🟢 ใช้คลาสใหม่ animate-slide-in
+                className="w-full h-full object-contain animate-slide-in"
+                onError={handleMediaError}
+              />
+            )
+          ) : (
+            <div className="text-gray-600 text-3xl font-bold flex flex-col items-center opacity-50">
+               <span>ไม่พบไฟล์สื่อในโฟลเดอร์</span>
+               <span className="text-xl font-normal mt-2">public/assets/contents</span>
             </div>
-            
-            <div className="flex-1 p-6 overflow-y-auto bg-gray-50/50">
-              {waitingQueues.length > 0 ? (
-                <div className="grid grid-cols-2 gap-4">
-                  {waitingQueues.slice(0, 14).map((q, index) => (
-                    <div 
-                      key={index} 
-                      className="bg-white border-2 border-emerald-100 text-emerald-700 rounded-2xl py-4 text-center text-[4vh] font-black shadow-sm"
-                    >
-                      {q.queue_number}
-                    </div>
-                  ))}
-                  {waitingQueues.length > 14 && (
-                    <div className="col-span-2 text-center text-[3vh] font-black text-emerald-600 bg-emerald-50 py-3 rounded-xl mt-2 border border-emerald-100/50">
-                      และอีก {waitingQueues.length - 14} คิว...
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="h-full flex items-center justify-center text-[3vh] font-black text-gray-400 opacity-70">
-                  ไม่มีคิวรอ
-                </div>
-              )}
-            </div>
-          </div>
-
+          )}
         </div>
       </main>
 
       {/* Footer */}
       <footer className="h-[8vh] bg-white flex items-center overflow-hidden border-t-4 border-emerald-500 shrink-0 shadow-md relative z-20 box-border">
-        <div className="bg-emerald-700 h-full px-8 flex items-center justify-center font-black text-[3vh] z-10 shadow-lg text-white">
+        <div className="bg-emerald-700 h-full px-8 flex items-center justify-center font-black text-[3vh] z-10 shadow-[5px_0_15px_rgba(0,0,0,0.5)] text-white">
           ประกาศ
         </div>
         <div className="flex-1 overflow-hidden relative h-full flex items-center bg-emerald-50">
