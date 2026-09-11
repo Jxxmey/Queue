@@ -1,3 +1,4 @@
+import sys
 import os
 import threading
 import time
@@ -13,6 +14,17 @@ import qrcode
 import barcode
 from barcode.writer import ImageWriter
 
+# 🟢 ฟังก์ชันนี้สำคัญมาก สำหรับแก้ปัญหาการหาไฟล์ไม่เจอตอนทำเป็น .exe
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
 class PrintJob(BaseModel):
     id: str
     queue_number: str
@@ -21,7 +33,7 @@ class PrintJob(BaseModel):
     customer_phone: str | None = None 
     queues_ahead: int = 0
     officer_name: str = "ระบบอัตโนมัติ"
-    branch_name: str = "Studio 7" # 🟢 เพิ่มฟิลด์ชื่อสาขา (ค่าเริ่มต้นเป็น Studio 7)
+    branch_name: str = "Studio 7" 
 
 def generate_qrcode(data: str, filename: str):
     qr = qrcode.QRCode(version=1, box_size=6, border=1)
@@ -33,7 +45,15 @@ def generate_qrcode(data: str, filename: str):
 
 def generate_barcode(data: str, filename: str):
     code128 = barcode.get('code128', data, writer=ImageWriter())
-    options = {'module_width': 0.3, 'module_height': 8.0, 'font_size': 8, 'text_distance': 3.0, 'quiet_zone': 1.0}
+    # 🟢 เพิ่ม 'write_text': False เข้าไปใน options เพื่อแก้บัค Font หาไม่เจอตอนรัน .exe (สาเหตุหลักที่ทำให้ปริ้นแค่ครึ่งบน)
+    options = {
+        'module_width': 0.3, 
+        'module_height': 8.0, 
+        'font_size': 8, 
+        'text_distance': 3.0, 
+        'quiet_zone': 1.0,
+        'write_text': False
+    }
     code128.save(filename.replace('.png', ''), options=options)
     return filename
 
@@ -93,15 +113,16 @@ def print_receipt(job: PrintJob, printer_name: str, frontend_url: str):
                 dib.draw(hDC1.GetHandleOutput(), (x_offset, y_offset, x_offset + target_width, y_offset + target_height))
                 return y_offset + target_height + 20
             except Exception as e:
+                with open("error_log.txt", "a") as f:
+                    f.write(f"Image Error 1: {e}\n")
                 return y_offset
 
-        logo_path = "logo.png"
+        logo_path = resource_path("logo.png")
         if os.path.exists(logo_path):
             current_y = draw_image_center1(logo_path, current_y, target_width=220)
         else:
             current_y = draw_text_center1("STUDIO 7", font_medium, current_y)
 
-        # 🟢 แสดงชื่อสาขาบนบัตรคิวลูกค้า
         current_y = draw_text_center1(f"สาขา: {job.branch_name}", font_small, current_y)
         current_y += 5
 
@@ -113,7 +134,8 @@ def print_receipt(job: PrintJob, printer_name: str, frontend_url: str):
         current_y += 10
 
         check_url = f"{frontend_url.strip('/')}/{job.queue_number}"
-        qr_file = generate_qrcode(check_url, "temp_qr.png")
+        qr_file = os.path.join(os.environ.get('TEMP', ''), "temp_qr.png")
+        generate_qrcode(check_url, qr_file)
         current_y = draw_image_center1(qr_file, current_y, target_width=180)
         current_y = draw_text_center1("สแกนเพื่อดูสถานะคิว", font_small, current_y)
         current_y += 15
@@ -130,7 +152,8 @@ def print_receipt(job: PrintJob, printer_name: str, frontend_url: str):
         hDC1.EndDoc()
         hDC1.DeleteDC()
     except Exception as e:
-        print(f"Customer Print Error: {e}")
+        with open("error_log.txt", "a", encoding="utf-8") as f:
+            f.write(f"Customer Print Error: {e}\n")
         return False
 
     time.sleep(2)
@@ -181,27 +204,32 @@ def print_receipt(job: PrintJob, printer_name: str, frontend_url: str):
                 dib.draw(hDC2.GetHandleOutput(), (x_offset, y_offset, x_offset + target_width, y_offset + target_height))
                 return y_offset + target_height + 20
             except Exception as e:
+                with open("error_log.txt", "a") as f:
+                    f.write(f"Image Error 2: {e}\n")
                 return y_offset
 
         current_y = draw_text_center2("** ส่วนสำหรับพนักงาน **", font_normal2, current_y)
-        # 🟢 แสดงชื่อสาขาบนบัตรคิวพนักงาน
         current_y = draw_text_center2(f"สาขา: {job.branch_name}", font_small2, current_y)
         current_y += 10
         current_y = draw_text_left2(f"คิว: {job.queue_number}", font_medium2, current_y)
         current_y = draw_text_left2(f"พนักงาน: {job.officer_name}", font_normal2, current_y)
         current_y = draw_text_left2(f"บริการ: {service_text}", font_normal2, current_y)
         
+        temp_dir = os.environ.get('TEMP', '')
+        
         if job.customer_phone:
             current_y += 10
             current_y = draw_text_left2(f"เบอร์ลูกค้า: {job.customer_phone}", font_normal2, current_y)
-            phone_bc = generate_barcode(job.customer_phone, "temp_phone_bc.png")
-            current_y = draw_image_center2(phone_bc, current_y, target_width=350)
+            phone_bc_file = os.path.join(temp_dir, "temp_phone_bc.png")
+            generate_barcode(job.customer_phone, phone_bc_file)
+            current_y = draw_image_center2(phone_bc_file, current_y, target_width=350)
         
         if job.service_type == "preorder" and job.booking_number:
             current_y += 10
             current_y = draw_text_left2(f"เลขที่จอง: {job.booking_number}", font_normal2, current_y)
-            book_bc = generate_barcode(job.booking_number, "temp_book_bc.png")
-            current_y = draw_image_center2(book_bc, current_y, target_width=400)
+            book_bc_file = os.path.join(temp_dir, "temp_book_bc.png")
+            generate_barcode(job.booking_number, book_bc_file)
+            current_y = draw_image_center2(book_bc_file, current_y, target_width=400)
 
         current_y += 100
         execute_cut(hDC2)
@@ -210,11 +238,19 @@ def print_receipt(job: PrintJob, printer_name: str, frontend_url: str):
         hDC2.EndDoc()
         hDC2.DeleteDC()
     except Exception as e:
-        print(f"Store Print Error: {e}")
+        with open("error_log.txt", "a", encoding="utf-8") as f:
+            f.write(f"Store Print Error: {e}\n")
         return False
 
+    # ลบไฟล์ชั่วคราว
+    temp_dir = os.environ.get('TEMP', '')
     for f in ["temp_qr.png", "temp_phone_bc.png", "temp_book_bc.png"]:
-        if os.path.exists(f): os.remove(f)
+        path = os.path.join(temp_dir, f)
+        if os.path.exists(path): 
+            try:
+                os.remove(path)
+            except:
+                pass
             
     return True
 
@@ -226,6 +262,12 @@ class PrintAgentApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Studio 7 - Remote Print Agent (Cloud Sync)")
+        
+        try:
+            self.root.iconbitmap(resource_path("logo.ico"))
+        except:
+            pass 
+            
         self.root.geometry("550x480") 
         self.root.resizable(False, False)
         
@@ -332,7 +374,6 @@ class PrintAgentApp:
                         queue_num = q['queue_number']
                         my_index = next((i for i, item in enumerate(active_queues) if item['queue_number'] == queue_num), 0)
                         
-                        # 🟢 ดึง branch_name จากข้อมูลคิวที่ส่งมาจาก Backend
                         b_name = q.get('branch_name', f"สาขา {branch_id}")
                         
                         job = PrintJob(
@@ -342,15 +383,19 @@ class PrintAgentApp:
                             booking_number=q.get('booking_number'),
                             customer_phone=q.get('customer_phone'),
                             queues_ahead=my_index,
-                            branch_name=b_name # ส่งชื่อสาขาเข้า PrintJob
+                            branch_name=b_name
                         )
                         
                         self.update_log(f"กำลังปริ้นคิว {job.queue_number}...")
                         success = print_receipt(job, printer_name, frontend_url)
                         
+                        # 🟢 บังคับตัดวงจรการปริ้นวน ไม่ว่าจะปริ้นสำเร็จหรือล้มเหลว ก็อัปเดตสถานะเป็น printed เพื่อเอาออกจากคิวรอปริ้น
+                        requests.patch(f"{api_base}/api/queue/{job.id}/printed", timeout=5)
+                        
                         if success:
-                            requests.patch(f"{api_base}/api/queue/{job.id}/printed", timeout=5)
                             self.update_log(f"ปริ้นคิว {job.queue_number} สำเร็จ!")
+                        else:
+                            self.update_log(f"❌ ปริ้นคิว {job.queue_number} มีปัญหา ข้ามคิวนี้")
                         
                         time.sleep(1) 
                 
