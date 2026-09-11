@@ -12,9 +12,17 @@ export default function Display() {
   const lastCalledId = useRef(null);
   const [queueToSpeak, setQueueToSpeak] = useState(null);
 
+  // 🟢 1. Playlist คอนเทนต์ (เอาไฟล์ไปใส่ใน public/assets/contents/)
+  const [mediaIndex, setMediaIndex] = useState(0);
+  const playlist = [
+    "01.png",
+    "02.jpg",
+    "03.mp4"
+  ];
+
   const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-  // 🟢 อ่านค่า branch_id จาก URL ถ้าไม่มีให้ใช้ Main
+  // อ่านค่า branch_id จาก URL ถ้าไม่มีให้ใช้ Main
   const queryParams = new URLSearchParams(window.location.search);
   const branch_id = queryParams.get("branch_id") || "Main";
 
@@ -25,7 +33,6 @@ export default function Display() {
 
   const fetchQueues = async () => {
     try {
-      // 🟢 แนบ branch_id ไปกับ URL ทุกครั้งเพื่อดึงคิวเฉพาะสาขาตัวเอง
       const branchQuery = `?branch_id=${branch_id}`;
 
       const activeRes = await axios.get(`${apiUrl}/api/queue/active${branchQuery}`);
@@ -57,7 +64,34 @@ export default function Display() {
     fetchQueues();
     const interval = setInterval(fetchQueues, 3000);
     return () => clearInterval(interval);
-  }, [branch_id]); // 🟢 เพิ่ม branch_id เป็น dependency
+  }, [branch_id]); 
+
+  // =========================================
+  // 🟢 2. ระบบรันคอนเทนต์สื่อโฆษณา (ฝั่งขวา)
+  // =========================================
+  const currentMedia = playlist[mediaIndex];
+  const isVideo = currentMedia?.toLowerCase().endsWith(".mp4");
+
+  useEffect(() => {
+    // ถ้ารูปภาพ ให้เปลี่ยนสไลด์ทุก 10 วินาที
+    if (!isVideo && playlist.length > 0) {
+      const timer = setTimeout(() => {
+        setMediaIndex((prev) => (prev + 1) % playlist.length);
+      }, 10000); // เปลี่ยนเป็น 10000 (10 วินาที)
+      
+      return () => clearTimeout(timer);
+    }
+  }, [mediaIndex, isVideo, playlist.length]);
+
+  const handleVideoEnd = () => {
+    setMediaIndex((prev) => (prev + 1) % playlist.length);
+  };
+
+  const handleMediaError = () => {
+    console.warn(`ข้ามไฟล์ที่ไม่พบ: ${currentMedia}`);
+    setMediaIndex((prev) => (prev + 1) % playlist.length);
+  };
+  // =========================================
 
   // ฟังก์ชันเล่นเสียงที่ยิงผ่าน Proxy API ของตัวเอง (แก้ปัญหา CORS ได้ 100%)
   const playProxyTTS = (text, lang) => {
@@ -98,7 +132,7 @@ export default function Display() {
         <div className="bg-white/10 backdrop-blur-md p-12 rounded-3xl border border-white/20 shadow-2xl flex flex-col items-center max-w-lg w-full">
           <FaVolumeUp className="text-7xl text-emerald-300 drop-shadow-lg mb-6 animate-pulse" />
           <h1 className="text-4xl font-black tracking-wide drop-shadow-md mb-2 text-center">เริ่มระบบคิว (Proxy TTS)</h1>
-          <p className="text-emerald-300 text-sm mb-4">สาขาที่เชื่อมต่อ: {branch_id}</p> {/* 🟢 แสดงชื่อสาขา */}
+          <p className="text-emerald-300 text-sm mb-4">สาขาที่เชื่อมต่อ: {branch_id}</p>
           <p className="text-emerald-200 text-center text-lg mb-8">
             กดปุ่มด้านล่างเพื่อเริ่มระบบหน้าจอ (ต้องการการคลิกเพื่อรับสิทธิ์เปิดเสียง)
           </p>
@@ -143,6 +177,15 @@ export default function Display() {
             white-space: nowrap;
             animation: marquee 25s linear infinite;
           }
+          
+          /* 🟢 แอนิเมชันสำหรับคอนเทนต์ (Slide In) */
+          .animate-slide-in { 
+            animation: slideIn 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards; 
+          }
+          @keyframes slideIn { 
+            from { transform: translateX(100%); opacity: 0; } 
+            to { transform: translateX(0); opacity: 1; } 
+          }
         `}
       </style>
 
@@ -160,6 +203,7 @@ export default function Display() {
 
       <main className="flex-1 flex p-5 gap-5 overflow-hidden relative z-10 min-h-0">
         
+        {/* ฝั่งซ้าย (2/3): คิวที่กำลังเรียก และคิวที่เรียกแล้ว */}
         <div className="w-2/3 flex flex-col gap-5 min-h-0">
           <div className="bg-white/85 backdrop-blur-xl rounded-3xl shadow-xl flex-1 flex flex-col overflow-hidden border border-white relative min-h-0">
             <div className="absolute top-0 left-0 w-48 h-48 bg-green-400/20 rounded-full blur-3xl pointer-events-none"></div>
@@ -216,41 +260,34 @@ export default function Display() {
           </div>
         </div>
 
-        <div className="w-1/3 bg-white/85 backdrop-blur-xl rounded-3xl shadow-xl border border-white flex flex-col overflow-hidden relative min-h-0">
-          <div className="bg-gradient-to-r from-gray-800 to-gray-700 text-white text-center py-3 shadow-sm shrink-0 relative z-10">
-            <h2 className="text-2xl font-black tracking-wide flex items-center justify-center gap-2">
-              คิวที่รอ (Waiting)
-              <div className="flex h-3 w-3 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-              </div>
-            </h2>
-          </div>
-          
-          <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-3 bg-gray-50/30">
-            {waitingQueues.length > 0 ? (
-              <div className="grid grid-cols-2 gap-3">
-                {waitingQueues.slice(0, 10).map((q, index) => (
-                  <div 
-                    key={index} 
-                    className="bg-white border-2 border-emerald-100 hover:border-emerald-300 text-emerald-700 rounded-xl py-3 text-center text-3xl font-black shadow-xs transition-all"
-                  >
-                    {q.queue_number}
-                  </div>
-                ))}
-              </div>
+        {/* 🟢 ฝั่งขวา (1/3): จอสื่อโฆษณา Digital Signage (แทนที่ Waiting Queue) */}
+        <div className="w-1/3 bg-black rounded-3xl shadow-xl border border-white/40 flex flex-col overflow-hidden relative min-h-0">
+          {playlist.length > 0 ? (
+            isVideo ? (
+              <video
+                key={currentMedia}
+                src={`/assets/contents/${currentMedia}`}
+                autoPlay
+                muted
+                className="w-full h-full object-contain animate-slide-in"
+                onEnded={handleVideoEnd}
+                onError={handleMediaError}
+              />
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-gray-400 opacity-60">
-                <div className="text-2xl font-black tracking-wider">ไม่มีคิวรอ</div>
-              </div>
-            )}
-            
-            {waitingQueues.length > 10 && (
-              <div className="text-center text-lg font-black text-emerald-600 mt-auto pt-2 border-t border-dashed border-gray-200 bg-emerald-50 py-2 rounded-lg shrink-0">
-                และอีก {waitingQueues.length - 10} คิว...
-              </div>
-            )}
-          </div>
+              <img
+                key={currentMedia}
+                src={`/assets/contents/${currentMedia}`}
+                alt="Signage"
+                className="w-full h-full object-contain animate-slide-in"
+                onError={handleMediaError}
+              />
+            )
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center opacity-50 bg-black text-white p-4 text-center">
+               <span className="text-2xl font-bold">ไม่พบไฟล์สื่อในโฟลเดอร์</span>
+               <span className="text-sm font-normal mt-2 text-gray-400">public/assets/contents</span>
+            </div>
+          )}
         </div>
 
       </main>
