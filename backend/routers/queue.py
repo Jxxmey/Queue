@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, date
 from database import get_collection
 from models.schemas import QueueCreate, QueueResponse, QueueCall, QueueStatusUpdate
 from bson import ObjectId
@@ -11,12 +11,21 @@ router = APIRouter(prefix="/api/queue", tags=["Queue"])
 queue_collection = get_collection("queues")
 officer_collection = get_collection("officers") 
 
-async def generate_queue_number(branch_id: str):
+# 🟢 แก้ไข: ให้แยกนับเลขคิวตามสาขา และตาม service_type (A = walkin, B = preorder)
+# หากต้องการให้รีเซ็ตทุกวัน สามารถเพิ่มเงื่อนไขตรวจวันที่สร้าง (created_at) ลงใน query ได้
+async def generate_queue_number(branch_id: str, service_type: str):
+    # กำหนดตัวอักษรนำหน้า
+    prefix = "A" if service_type == "walkin" else "B"
+    
+    # นับจำนวนคิวของประเภทนี้ในสาขานี้
     count = await queue_collection.count_documents({
         "status": {"$ne": "cancelled"},
-        "branch_id": str(branch_id)
+        "branch_id": str(branch_id),
+        "service_type": service_type
     })
-    return f"A{count + 1:03d}"
+    
+    # สร้างรหัส 3 หลัก เช่น A001, B015
+    return f"{prefix}{count + 1:03d}"
 
 @router.post("/issue", response_model=QueueResponse)
 async def issue_queue(queue_data: QueueCreate):
@@ -29,7 +38,7 @@ async def issue_queue(queue_data: QueueCreate):
 
         print(f"🔍 กำลังค้นหารหัสพนักงานจาก OFFICERS_DB: '{search_id_clean}'")
 
-        # 🟢 วนลูปค้นหาใน OFFICERS_DB ที่โหลดมาจากไฟล์ CSV
+        # วนลูปค้นหาใน OFFICERS_DB ที่โหลดมาจากไฟล์ CSV
         officer = None
         for emp in OFFICERS_DB:
             db_emp_id = str(emp.get("id", "")).replace(",", "").strip()
@@ -47,11 +56,14 @@ async def issue_queue(queue_data: QueueCreate):
     except Exception as e:
         print(f"❌ [Issue Queue Error] เกิดข้อผิดพลาด: {e}")
 
-    queue_num = await generate_queue_number(branch_id)
+    # 🟢 สร้างเลขคิวโดยระบุ service_type
+    queue_num = await generate_queue_number(branch_id, queue_data.service_type)
     
+    # นับว่ามีคิวประเภทนี้รออยู่กี่คิว (เพื่อคำนวณ queues_ahead)
     waiting_count = await queue_collection.count_documents({
         "status": "waiting", 
-        "branch_id": str(branch_id)
+        "branch_id": str(branch_id),
+        "service_type": queue_data.service_type
     })
     
     new_queue = {
@@ -84,12 +96,11 @@ async def get_active_queues(branch_id: str = Query(None)):
             
         cursor = queue_collection.find(query).sort("created_at", 1)
         queues = []
-        # 🟢 ใช้ async for วนลูปอ่านข้อมูลอย่างปลอดภัย
         async for q in cursor:
             q["id"] = str(q["_id"])
             q.pop("_id", None)
             queues.append(q)
-            if len(queues) >= 100:  # จำกัดที่ 100 รายการ
+            if len(queues) >= 100:  
                 break
                 
         return queues
@@ -106,12 +117,11 @@ async def get_recent_called_queues(branch_id: str = Query(None)):
             
         cursor = queue_collection.find(query).sort("called_at", -1)
         queues = []
-        # 🟢 ใช้ async for วนลูปอ่านข้อมูล
         async for q in cursor:
             q["id"] = str(q["_id"]) 
             q.pop("_id", None) 
             queues.append(q)
-            if len(queues) >= 5:  # จำกัดที่ 5 รายการ
+            if len(queues) >= 5:  
                 break
                       
         return queues
@@ -128,12 +138,11 @@ async def get_unprinted_queues(branch_id: str = Query(None)):
             
         cursor = queue_collection.find(query).sort("created_at", 1) 
         queues = []
-        # 🟢 ใช้ async for วนลูปอ่านข้อมูล
         async for q in cursor:
             q["id"] = str(q["_id"])
             q.pop("_id", None)
             queues.append(q)
-            if len(queues) >= 10:  # จำกัดที่ 10 รายการ
+            if len(queues) >= 10:  
                 break
                 
         return queues
