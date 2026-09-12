@@ -115,7 +115,7 @@ export default function TvDisplay() {
   }, [queueToSpeak, audioEnabled]);
 
   const displayedQueues = recentQueues.slice(0, 6);
-  const announcementText = "📢 ยินดีต้อนรับสู่ Studio 7 ... โปรดเตรียมหมายเลขคิวของท่านให้พร้อม หากถึงคิวของท่านแล้ว กรุณาติดต่อพนักงานที่เคาน์เตอร์ ... ขอขอบคุณที่ใช้บริการครับ 🙏";
+  const announcementText = "📢 ยินดีต้อนรับสู่ Studio 7 Central Pinklao ให้เราดูแลทุกประสบการณ์เทคโนโลยีของคุณ     ระหว่างรอรับบริการ เชิญเพลิดเพลินกับการทดลองสินค้าภายในร้าน เมื่อถึงคิว กรุณาแสดงบัตรคิวที่เคาน์เตอร์และเตรียมการชำระเงินให้พร้อม     ขอบคุณที่ใช้บริการ Studio 7 ค่ะ 🙏";
 
   if (!audioEnabled) {
     return (
